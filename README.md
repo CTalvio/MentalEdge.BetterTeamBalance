@@ -2,13 +2,11 @@
 
 Yet another autobalance mod. Except it's a lot smorter and comes with additional features, all with the overarching goal of improving team balancing, so that we might enjoy challenging and even matches more often.
 
-Relies on FSU for chat commands. Also you will want to disable FSUs built-in auto balance and team shuffle features.
-
-If you do not, this mod will override those convars when a conflicting feature is enabled, in order to ensure proper functioning. This may not take during the first match after a server is started, however, so it is better to disable them directly.
+Relies on FSU for chat commands. AIf using FSU, you will want to disable its built-in auto balance and team shuffle features. FSU-fvnk does not come with these features in the first place.
 
 Get FSU here: [Fifty's Server Utilities](https://northstar.thunderstore.io/package/Fifty/Server_Utilities/)
 
-Alternatively, use my improved version avaialable here:
+Alternatively, get my improved version here: [FSU-fvnk](https://northstar.thunderstore.io/package/MentalEdge/FSUfvnk/)
 
 ### Changelog
 
@@ -16,10 +14,11 @@ Alternatively, use my improved version avaialable here:
 
 - Further improved joining player handling
 - Corrected some logging errors
-- !balance command is now !teambalance
+- !balance command is now !teambalance/!tb
 - Force rebalance can now trigger earlier (if conditions are met)
 - Suggestion message is now sent even less frequently
 - Overarching chat color theme support using MentalEdge.theme (included)
+- Removed automatic disabling of FSU auto-balance/shuffle for comptaibility with FSU-fvnk
 
 ## Features
 
