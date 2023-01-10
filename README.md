@@ -2,7 +2,7 @@
 
 Yet another autobalance mod. Except it's a lot smorter and comes with additional features, all with the overarching goal of improving team balancing, so that we might enjoy challenging and even matches more often.
 
-Relies on FSU for chat commands. AIf using FSU, you will want to disable its built-in auto balance and team shuffle features. FSU-fvnk does not come with these features in the first place.
+Relies on FSU for chat commands. If using FSU, you will want to disable its built-in auto balance and team shuffle features. FSU-fvnk does not come with these features in the first place.
 
 Get FSU here: [Fifty's Server Utilities](https://northstar.thunderstore.io/package/Fifty/Server_Utilities/)
 
@@ -10,15 +10,21 @@ Alternatively, get my improved version here: [FSU-fvnk](https://northstar.thunde
 
 ### Changelog
 
-#### 1.2.4
+#### 1.2.6
 
-- Further improved joining player handling
-- Corrected some logging errors
-- !balance command is now !teambalance/!tb
-- Force rebalance can now trigger earlier (if conditions are met)
-- Suggestion message is now sent even less frequently
-- Overarching chat color theme support using MentalEdge.theme (included)
-- Removed automatic disabling of FSU auto-balance/shuffle for comptaibility with FSU-fvnk
+- Fixed active limit convar being commented out
+
+#### 1.2.5
+
+- New feature: insidious mode
+    - Active balancing aka "insidious mode"
+    - Set a score difference treshold above which insidious mode is activated
+    - When crossed, the mod will compare team strenghts using the balancing algorithm
+    - If team balance appears to be getting worse (snowballing) the mod will swap two suitable players teams
+    - The swap can only occur while they are dead
+    - Then it will wait and see if team strength begins to develop towards even, and only act again, if not
+- RUI support
+- Fixed round based modes triggering team rebuild on each round
 
 ## Features
 
@@ -71,6 +77,16 @@ Below is an example of how the mod rebalanced a match where one player was doing
 Check mod.json for all convars and config options.
 
 ### Changelogs for previous versions
+
+#### 1.2.4
+
+- Further improved joining player handling
+- Corrected some logging errors
+- !balance command is now !teambalance/!tb
+- Force rebalance can now trigger earlier (if conditions are met)
+- Suggestion message is now sent even less frequently
+- Overarching chat color theme support using MentalEdge.theme (included)
+- Removed automatic disabling of FSU auto-balance/shuffle for comptaibility with FSU-fvnk
 
 #### 1.2.3
 

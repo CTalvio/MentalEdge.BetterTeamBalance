@@ -3,7 +3,7 @@
    "Description": "Team balancing and shuffling, done smortly",
    "LoadPriority": 8,
    "RequiredOnClient": false,
-   "Version": "1.2.4",
+   "Version": "1.2.6",
 
    "ConVars": [
       {
@@ -16,11 +16,15 @@
       },
       {
          "Name": "btb_suggestion_limit",
-         "DefaultValue": "1.5" // The relative score difference treshold, if the scores stay above this difference, a rebalance will eventually be suggested in chat. Set to zero to disable the suggstion message.
+         "DefaultValue": "1.5" // The relative score difference treshold, if the scores stay above this difference, a rebalance will eventually be suggested in chat. Set to zero to disable the suggestion message.
       },
       {
          "Name": "btb_stomp_limit",
-         "DefaultValue": "0.0" // The relative score difference above which the teams will eventually be automatically balanced even without approval by vote. Provided the imbalance persists/grows over some time. Set to zero to disable forced rebalance.
+         "DefaultValue": "2.1" // The relative score difference above which the teams will eventually be automatically balanced even without approval by vote. Provided the imbalance persists/grows over some time. Set to zero to disable forced rebalance.
+      },
+      {
+         "Name": "btb_active_limit",
+         "DefaultValue": "1.7" // Insidious/Active balance treshold. Above this score difference, the teams will be balanced by swapping two suitable players between them at a time. (A strong player to the losing side, a weak one to the winning side.) Set to zero to disable. Only occurs if there is an actual team strength difference, will not interfere with evenly matched teams even if one is winning.
       },
       {
          "Name": "btb_vote_fraction",

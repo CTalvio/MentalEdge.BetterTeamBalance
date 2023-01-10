@@ -17,22 +17,23 @@ enum eAntiAfkPlayerState {
     AFK
 }
 
-int matchElapsed = 0
 int differenceMax = 1
 int waitTime = 4
-int waitedTime = 0
-float accumulatedSuggestionImbalance = 0.0
-float accumulatedStompImbalance = 0.0
 float suggestionLimit = 1.5
 float stompLimit = 2.0
+float activeLimit = 1.6
 float voteFraction = 0.45
 float relativeScoreDifference = 1.0
-int rebalancedHasOccurred = 0
 float suggestionTimer = 12.0
 int afkThresold = 5
 int afkTime = 70
 int scoreKDShuffle = 1
-int outlierCompensation = 1
+
+int rebalancedHasOccurred = 0
+int waitedTime = 0
+int matchElapsed = 0
+int subtleRebalancePermitted = 0
+int shuffleDone = 0
 
 const SHUFFLE_RANDOMNESS = 0.25
 
@@ -42,13 +43,14 @@ void function BTBInit(){
     waitTime = GetConVarInt( "btb_wait_time" )
     suggestionLimit = GetConVarFloat( "btb_suggestion_limit" )
     stompLimit = GetConVarFloat( "btb_stomp_limit" )
+    activeLimit = GetConVarFloat( "btb_active_limit" )
     voteFraction = GetConVarFloat( "btb_vote_fraction" )
     afkThresold = GetConVarInt( "btb_afk_threshold" )
     afkTime = GetConVarInt( "btb_afk_time" )
     scoreKDShuffle = GetConVarInt( "btb_skd_shuffle" )
 
     FSU_RegisterCommand( "teambalance",AccentOne( FSU_GetString("FSU_PREFIX") + "teambalance") + " - if enough players vote, teams and scores will be rebalanced.", "btb", BTB_BalanceVote, ["tbal", "tb"] )
-    AddCallback_OnPlayerKilled( OnDeathAutobalance )
+    AddCallback_OnPlayerKilled( OnDeathBalance )
     AddCallback_OnClientConnected( AddPlayerCallbacks )
     AddCallback_OnClientConnected( AssignJoiningPlayer )
     AddCallback_OnClientDisconnected( DeletePlayerRecords )
@@ -112,7 +114,7 @@ void function Postmatch(){
 
 // Rebuilds the player rank array and appends any newcomers that joined in the interrim
 void function Prematch(){
-    if (GetPlayerArray().len() > 1 && GetConVarString( "uid_list" ) != ""){
+    if (GetPlayerArray().len() > 1 && GetConVarString( "uid_list" ) != "" && shuffleDone == 0){
         print("[BTB] Pulling player ranks and shuffling teams")
         array <PlayerRankArray> playerRanks
         array <string> previusMatchUID = split( GetConVarString( "uid_list" ), "," )
@@ -140,9 +142,12 @@ void function Prematch(){
                 playerRanks.append( temp )
             }
         }
-
         ExecuteStatsBalance( playerRanks )
     }
+    else if( abs(GetPlayerArrayOfTeam(TEAM_IMC).len()-GetPlayerArrayOfTeam(TEAM_MILITIA).len()) > differenceMax ){
+        waitedTime = waitTime
+    }
+    shuffleDone = 1
 }
 
 
@@ -179,7 +184,7 @@ float function CalculatePlayerRank( entity player ){
 }
 
 
-// Place a joining player onto the team in need of bolstering
+// Place a joining player onto the team more in need of bolstering
 void function AssignJoiningPlayer( entity player ){
     if (!IsFFAGame()){
         float playerTeamFactor = 1.0
@@ -204,7 +209,8 @@ void function AssignJoiningPlayer( entity player ){
 }
 
 // Check if playercount balancing is needed on death
-void function OnDeathAutobalance( entity victim, entity attacker, var damageInfo ){
+void function PlayerCountAutobalance( entity victim ){
+    wait 1
     if( waitedTime >= waitTime ){
         if ( differenceMax == 0 || IsFFAGame() || GetPlayerArray().len() == 1 || abs(GetPlayerArrayOfTeam(TEAM_IMC).len() - GetPlayerArrayOfTeam(TEAM_MILITIA).len()) <= differenceMax || GameTime_TimeLeftSeconds() < 60 ){
             return
@@ -232,6 +238,7 @@ void function OnDeathAutobalance( entity victim, entity attacker, var damageInfo
         print("[BTB] The team of " + victim.GetPlayerName() + " has been switched")
         SetTeam( victim, GetOtherTeam( victim.GetTeam() ) )
         Chat_ServerPrivateMessage( victim, AdminColor("Your team has been switched to balance the game!"), false )
+        NSSendPopUpMessageToPlayer( victim, "Your team has been switched!" )
         waitedTime = 1
     }
 }
@@ -280,23 +287,71 @@ void function BTB_BalanceVote ( entity player, array < string > args ){
         return
     }
 
-    playersWantingToBalance.append( player )
-
-
     int required_players = int ( GetPlayerArray().len() * voteFraction )
     if ( required_players == 0 ){
         required_players = 1
     }
 
+    if ( playersWantingToBalance.len() == 1 ){
+        thread VoteHUD()
+    }
+
+    playersWantingToBalance.append( player )
+    Chat_ServerPrivateMessage( player, SuccessColor("You voted to rebalance teams!"), false )
+    Chat_ServerBroadcast( AccentTwo(playersWantingToBalance.len() + "/" + required_players) + AnnounceColor(" have voted to rebalance teams and scores, ") + AccentOne(FSU_GetString("FSU_PREFIX") + "tb") + AnnounceColor(" to vote.") )
+
     if ( playersWantingToBalance.len() >= required_players ){
         print("[BTB] Team skill balancing triggered by vote")
         ExecuteStatsBalance( GetPlayersSortedBySkill() )
-        Chat_ServerBroadcast( SuccessColor("Teams and scores have rebalanced!") )
         rebalancedHasOccurred = 1
     }
-    else{
-        Chat_ServerBroadcast( AccentTwo("[" + playersWantingToBalance.len() + "/" + required_players + "]") + AnnounceColor(" players want to rebalance the teams and scores, ") + AccentOne(FSU_GetString("FSU_PREFIX") + "teambalance") + AnnounceColor(".") )
+}
+
+void function VoteHUD(){
+    foreach ( entity player in GetPlayerArray() ){
+        NSSendAnnouncementMessageToPlayer( player, "TEAM REBALANCE VOTE STARTED", "Use '!tb' in chat to add your vote.", <1,0,0>, 0, 1 )
     }
+    wait 0.1
+    foreach ( entity player in GetPlayerArray() ){
+        NSCreateStatusMessageOnPlayer( player, "", playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + " have voted to rebalance teams", "teambalance"  )
+    }
+
+    int timer = 180
+
+    while(timer > 0 && playersWantingToBalance.len() < int(GetPlayerArray().len()*voteFraction)){
+        int minutes = int(floor(timer / 60))
+        string seconds = string(timer - (minutes * 60))
+        if (timer - (minutes * 60) < 10){
+            seconds = "0"+seconds
+        }
+
+        foreach (entity player in GetPlayerArray()) {
+            NSEditStatusMessageOnPlayer( player, minutes + ":" + seconds, playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + " have voted to rebalance teams", "teambalance" )
+        }
+        timer -= 1
+        wait 1
+    }
+
+    if(playersWantingToBalance.len() >= int(GetPlayerArray().len()*voteFraction)){
+        foreach ( entity player in GetPlayerArray() ){
+            NSSendAnnouncementMessageToPlayer( player, "TEAMS HAVE BEEN REBALANCED", "Teams and scores have been rebalanced by vote!", <1,0,0>, 0, 1 )
+        }
+        wait 0.1
+        foreach ( entity player in GetPlayerArray() ){
+            NSEditStatusMessageOnPlayer( player, "PASS", "Teams and have been rebalanced!", "teambalance" )
+        }
+    }
+    else{
+        foreach (entity player in GetPlayerArray()) {
+            NSEditStatusMessageOnPlayer( player, "FAIL", "Not enough votes to rebalance teams!", "teambalance" )
+        }
+    }
+
+    wait 10
+    foreach ( entity player in GetPlayerArray() ){
+        NSDeleteStatusMessageOnPlayer( player, "teambalance" )
+    }
+    playersWantingToBalance.clear()
 }
 
 // Execute balancing
@@ -514,6 +569,45 @@ void function ExecuteStatsBalance( array<PlayerRankArray> playerRanks ){
     }
 }
 
+// Execute insidious mode balancing
+void function OnDeathBalance( entity victim, entity attacker, var damageInfo ){
+    if (subtleRebalancePermitted == 1){
+        float victimStrength = CalculatePlayerRank( victim )
+        float victimTeamStrength = 1.0
+        float opposingTeamStrength = 1.0
+        array <entity> deadOpposingPlayers
+        foreach(entity player in GetPlayerArrayOfTeam( victim.GetTeam() )){
+            victimTeamStrength *= CalculatePlayerRank( player )
+        }
+        foreach(entity player in GetPlayerArrayOfTeam( GetOtherTeam( victim.GetTeam() ) )){
+            opposingTeamStrength *= CalculatePlayerRank( player )
+            if (!(IsAlive(player))){
+               deadOpposingPlayers.append(player)
+            }
+        }
+        float strengthDifference = fabs(victimTeamStrength-opposingTeamStrength)
+
+        float lastImprovement = strengthDifference
+        entity opponentToSwap
+        foreach(entity player in deadOpposingPlayers){
+            float newOpposingTeamStrength = (opposingTeamStrength / CalculatePlayerRank(player)) * victimStrength
+            float newVictimTeamStrength = (victimTeamStrength / victimStrength) * CalculatePlayerRank(player)
+            if ( lastImprovement > fabs(newOpposingTeamStrength-newVictimTeamStrength) ){
+                opponentToSwap = player
+                lastImprovement = fabs(newOpposingTeamStrength-newVictimTeamStrength)
+            }
+        }
+
+        if( strengthDifference > lastImprovement ){
+            SetTeam( victim, GetOtherTeam( victim.GetTeam() ) )
+            SetTeam( opponentToSwap, GetOtherTeam( opponentToSwap.GetTeam() ) )
+            subtleRebalancePermitted = 0
+            print("[BTB] Team strengths were wack, the teams of " + victim.GetPlayerName() + " and " + opponentToSwap.GetPlayerName() + " have been swapped to try and remedy this.")
+        }
+    }
+    thread PlayerCountAutobalance(victim)
+}
+
 // Sort players by their ranking
 array<PlayerRankArray> function GetPlayersSortedBySkill(){
     array <PlayerRankArray> pskdArr
@@ -537,6 +631,12 @@ int function PlayerRankArraySort(PlayerRankArray data1, PlayerRankArray data2)
 
 // Main thread
 void function BTBThread(){
+    float accumulatedSuggestionImbalance = 0.0
+    float accumulatedStompImbalance = 0.0
+    float accumulatedActiveImbalance = 0.0
+    float previousStrengthDifference = 0.0
+    int activeFailCount = 0
+
     wait 10
     while (true){
         wait 10
@@ -556,62 +656,115 @@ void function BTBThread(){
         }
 
         // Check for score imbalance
-        int imcScore = GameRules_GetTeamScore(TEAM_IMC)
-        int militiaScore = GameRules_GetTeamScore(TEAM_MILITIA)
+        if (suggestionLimit != 0 || stompLimit != 0 || activeLimit != 0){
 
-        if (suggestionLimit != 0 || stompLimit != 0 ){
-            if (matchElapsed > 14 && imcScore > 5 && militiaScore > 5 && rebalancedHasOccurred == 0 && GameTime_TimeLeftSeconds() > 300 && GetPlayerArray().len() > 5){
+            int imcScore = GameRules_GetTeamScore(TEAM_IMC)
+            int militiaScore = GameRules_GetTeamScore(TEAM_MILITIA)
+            int absoluteScoreDifference = abs( imcScore-militiaScore )
 
-                // Calculate the relative difference of the score between teams
-                if (militiaScore > imcScore){
-                    relativeScoreDifference = 1.0 * militiaScore / imcScore
-                }
-                else{
-                    relativeScoreDifference = 1.0 * imcScore / militiaScore
-                }
+            // Calculate the relative difference of the score between teams
+            if (militiaScore > imcScore){
+                relativeScoreDifference = 1.0 * militiaScore / imcScore
+            }
+            else{
+                relativeScoreDifference = 1.0 * imcScore / militiaScore
+            }
 
-                // Accrue a value if above the treshold, decay when below
-                if (suggestionLimit != 0 && relativeScoreDifference > suggestionLimit){
-                    accumulatedSuggestionImbalance += 1.0 + ((relativeScoreDifference - suggestionLimit) * 1.5 )
-                    print("[BTB] accumulated suggestion imbalance/threshold: " + accumulatedSuggestionImbalance + " / " + suggestionTimer)
-                }
-                else{
-                    accumulatedSuggestionImbalance -= 1.5
-                    if (accumulatedSuggestionImbalance < 0){
-                        accumulatedSuggestionImbalance = 0
-                        suggestionTimer = 12.0
-                    }
-                    else{
+            if (matchElapsed > 14 && absoluteScoreDifference > 50 && rebalancedHasOccurred == 0 && GameTime_TimeLeftSeconds() > 300 && GetPlayerArray().len() > 5){
+
+                if ( suggestionLimit != 0 ){
+                    // Accrue a value if above the treshold, decay when below
+                    if ( relativeScoreDifference > suggestionLimit || absoluteScoreDifference > suggestionLimit*120 ){
+                        accumulatedSuggestionImbalance += 1.0 + (absoluteScoreDifference / 150 )
                         print("[BTB] accumulated suggestion imbalance/threshold: " + accumulatedSuggestionImbalance + " / " + suggestionTimer)
                     }
-                }
-                // Activate suggestion for rebalance when accrued enough value, set a new treshold when to suggest again
-                if (accumulatedSuggestionImbalance > suggestionTimer){
-                    print("[BTB] Match is uneven, suggesting rebalance")
-                    Chat_ServerBroadcast( AnnounceColor("Looks like this match is uneven, if you'd like to rebalance the teams and their scores, use ") + AccentOne(FSU_GetString("FSU_PREFIX") + "teambalance") + AnnounceColor(".") )
-                    suggestionTimer += suggestionTimer * 1.4
+                    else{
+                        accumulatedSuggestionImbalance -= 1.5
+                        if (accumulatedSuggestionImbalance < 0){
+                            accumulatedSuggestionImbalance = 0
+                            suggestionTimer = 12.0
+                        }
+                        else{
+                            print("[BTB] accumulated suggestion imbalance/threshold: " + accumulatedSuggestionImbalance + " / " + suggestionTimer)
+                        }
+                    }
+                    // Activate suggestion for rebalance when accrued enough value, set a new treshold when to suggest again
+                    if (accumulatedSuggestionImbalance > suggestionTimer){
+                        print("[BTB] Match is uneven, suggesting rebalance")
+                        Chat_ServerBroadcast( AnnounceColor("Looks like this match is uneven, if you'd like to rebalance the teams and their scores, use ") + AccentOne(FSU_GetString("FSU_PREFIX") + "teambalance") + AnnounceColor(".") )
+                        suggestionTimer += suggestionTimer * 1.4
+                    }
                 }
 
-                // Accrue a value if above the treshold, decay when below
-                if (stompLimit != 0 && relativeScoreDifference > stompLimit){
-                    accumulatedStompImbalance += 1.0 + ((relativeScoreDifference - stompLimit) * 1.5)
-                    print("[BTB] accumulated stomp imbalance/threshold: " + accumulatedStompImbalance + " / 18")
-                }
-                else{
-                    accumulatedStompImbalance = -1.5
-                    if (accumulatedStompImbalance < 0){
-                        accumulatedStompImbalance = 0
-                    }
-                    else {
+                if ( stompLimit != 0 ){
+                    // Accrue a value if above the treshold, decay when below
+                    if ( relativeScoreDifference > stompLimit || absoluteScoreDifference > stompLimit*145 ){
+                        accumulatedStompImbalance += 1.0 + (absoluteScoreDifference / 150 )
                         print("[BTB] accumulated stomp imbalance/threshold: " + accumulatedStompImbalance + " / 18")
                     }
+                    else{
+                        accumulatedStompImbalance = -1.5
+                        if (accumulatedStompImbalance < 0){
+                            accumulatedStompImbalance = 0
+                        }
+                        else {
+                            print("[BTB] accumulated stomp imbalance/threshold: " + accumulatedStompImbalance + " / 18")
+                        }
+                    }
+                    // Activate forced rebalance when accrued enough value
+                    if (accumulatedStompImbalance > 18 && matchElapsed > 18){
+                        print("[BTB] Match is very uneven, forcing rebalance")
+                        Chat_ServerBroadcast( ErrorColor("Very uneven match detected! ") + AnnounceColor("Teams and scores have been automatically rebalanced.") )
+                        foreach( entity player in GetPlayerArray()){
+                            NSSendAnnouncementMessageToPlayer( player, "TEAMS HAVE BEEN AUTO-REBALANCED!", "Detected a very uneven match! Scores have also been leveled.", <1,0,0>, 0, 1 )
+                        }
+                        ExecuteStatsBalance( GetPlayersSortedBySkill() )
+                        rebalancedHasOccurred = 1
+                    }
                 }
-                // Activate forced rebalance when accrued enough value
-                if (accumulatedStompImbalance > 18 && matchElapsed > 18){
-                    print("[BTB] Match is very uneven, forcing rebalance")
-                    Chat_ServerBroadcast( ErrorColor("Very uneven match detected! ") + AnnounceColor("Teams and scores have been automatically rebalanced.") )
-                    ExecuteStatsBalance( GetPlayersSortedBySkill() )
-                    rebalancedHasOccurred = 1
+            }
+
+            // Check for team strength imbalance
+            if ( activeLimit != 0 && subtleRebalancePermitted == 0){
+                if (matchElapsed > 14 && absoluteScoreDifference > 50 && GameTime_TimeLeftSeconds() > 300 && GetPlayerArray().len() > 5){
+
+                    // Accrue a value if above the treshold, decay when below
+                    if ( relativeScoreDifference > activeLimit || absoluteScoreDifference > activeLimit*130 ){
+                        accumulatedActiveImbalance += 1.0 + (absoluteScoreDifference / 150 )
+                    }
+                    else{
+                        accumulatedActiveImbalance -= 1.5
+                        if (accumulatedActiveImbalance < 0){
+                            accumulatedActiveImbalance = 0
+                        }
+                    }
+                    // Check if team strengths are wack
+                    if (accumulatedActiveImbalance > 16){
+                        float imcTeamStrength = 1.0
+                        float milTeamStrength = 1.0
+                        foreach(entity player in GetPlayerArrayOfTeam(TEAM_IMC) ){
+                            imcTeamStrength *= CalculatePlayerRank( player )
+                        }
+                        foreach(entity player in GetPlayerArrayOfTeam(TEAM_MILITIA) ){
+                            milTeamStrength *= CalculatePlayerRank( player )
+                        }
+                        float strengthDifference = fabs( imcTeamStrength-milTeamStrength )
+
+                        print("[BTB] Teams are imbalanced, team strength difference is at: " + strengthDifference)
+
+                        if ( strengthDifference > 0.5 && strengthDifference >= previousStrengthDifference ){
+                            activeFailCount += 2
+                            if ( activeFailCount > 5){
+                                subtleRebalancePermitted = 1
+                                activeFailCount = 0
+                                print("[BTB] Team balance is wack, attempting to remedy!")
+                            }
+                        }
+                        else if(activeFailCount > 0){
+                            activeFailCount -= 1
+                        }
+                        previousStrengthDifference = strengthDifference
+                    }
                 }
             }
         }
@@ -635,7 +788,7 @@ void function BTBThread(){
                 switch (GetAfkState(player)){
                     case eAntiAfkPlayerState.SUSPICIOUS:
                         Chat_ServerPrivateMessage( player, ErrorColor("You will soon be kicked for being AFK! MOVE!!!"), false )
-                        SendHudMessage( player, "YOU ARE AFK! MOVE!!!", -1, 0.35, 255, 80, 80, 255, 0.15, 5, 0.15 )
+                        NSSendPopUpMessageToPlayer( player, "YOU ARE AFK! MOVE!!!")
                         print("[BTB] AFK player has been warned")
                         break
 
