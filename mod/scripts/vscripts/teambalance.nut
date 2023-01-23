@@ -39,6 +39,20 @@ const SHUFFLE_RANDOMNESS = 0.25
 
 
 void function BTBInit(){
+
+    AddCallback_OnClientDisconnected( DeletePlayerRecords )
+    AddCallback_OnClientConnected( AddPlayerCallbacks )
+    AddCallback_OnPlayerRespawned( Moved )
+    foreach (entity player in GetPlayerArray()){
+        AddPlayerCallbacks( player )
+    }
+
+    if( IsFFAGame() ){
+        print("[BTB] THIS SERVER IS ON AN FFA GAMEMODE - RUNNING AFK KICK ONLY")
+        BTBFallbackModeThread()
+        return
+    }
+
     differenceMax = GetConVarInt( "btb_difference_max" )
     waitTime = GetConVarInt( "btb_wait_time" )
     suggestionLimit = GetConVarFloat( "btb_suggestion_limit" )
@@ -49,22 +63,21 @@ void function BTBInit(){
     afkTime = GetConVarInt( "btb_afk_time" )
     scoreKDShuffle = GetConVarInt( "btb_skd_shuffle" )
 
-    FSU_RegisterCommand( "teambalance",AccentOne( FSU_GetString("FSU_PREFIX") + "teambalance") + " - if enough players vote, teams and scores will be rebalanced.", "btb", BTB_BalanceVote, ["tbal", "tb"] )
-    AddCallback_OnPlayerKilled( OnDeathBalance )
-    AddCallback_OnClientConnected( AddPlayerCallbacks )
-    AddCallback_OnClientConnected( AssignJoiningPlayer )
-    AddCallback_OnClientDisconnected( DeletePlayerRecords )
-    AddCallback_OnPlayerRespawned( Moved )
-    foreach (entity player in GetPlayerArray()){
-        AddPlayerCallbacks( player )
-    }
+	FSCC_CommandStruct command
+	command.m_UsageUser = "teambalance"
+	command.m_Description = "Vote for teams and scores to be rebalanced."
+	command.m_Group = "BTB"
+	command.m_Abbreviations = [ "tb", "tbal" ]
+	command.Callback = BTB_BalanceVote
+	FSCC_RegisterCommand( "teambalance", command )
 
-    // Override any FSU convars to disable any features that conflict with enabled BTB features
-//     if (differenceMax != 0){
-//         SetConVarInt( "FSU_BALANCE_TEAMS_MID_GAME", 0 )
-//     }
+    AddCallback_OnPlayerKilled( OnDeathBalance )
+    AddCallback_OnClientConnected( AssignJoiningPlayer )
+
+    if (differenceMax != 0){
+        SetConVarInt( "FSTB_TEAM_BALANCE_ENABLED", 0 )
+    }
     if (scoreKDShuffle == 1){
-//         SetConVarInt( "FSU_SHUFFLE_TEAMS_ON_MATCH_START", 0 )
         AddCallback_GameStateEnter( eGameState.Prematch, Prematch)
         AddCallback_GameStateEnter( eGameState.Postmatch, Postmatch)
     }
@@ -237,7 +250,7 @@ void function PlayerCountAutobalance( entity victim ){
         // Passed checks, balance the teams
         print("[BTB] The team of " + victim.GetPlayerName() + " has been switched")
         SetTeam( victim, GetOtherTeam( victim.GetTeam() ) )
-        Chat_ServerPrivateMessage( victim, AdminColor("Your team has been switched to balance the game!"), false )
+        FSU_PrivateChatMessage( victim, "%FYour team has been switched to balance the game!")
         NSSendPopUpMessageToPlayer( victim, "Your team has been switched!" )
         waitedTime = 1
     }
@@ -246,17 +259,17 @@ void function PlayerCountAutobalance( entity victim ){
 // Count votes for !balance, and activate, when enough have voted for it
 void function BTB_BalanceVote ( entity player, array < string > args ){
     if ( GetMapName() == "mp_lobby" ){
-        Chat_ServerPrivateMessage( player, ErrorColor("Can't balance in lobby"), false )
+        FSU_PrivateChatMessage( player, "%ECan't balance in lobby")
         return
     }
 
     if ( GetGameState() != eGameState.Playing ){
-        Chat_ServerPrivateMessage( player, ErrorColor("Can't balance in this game state"), false )
+        FSU_PrivateChatMessage( player, "%ECan't balance in this game state")
         return
     }
 
     if ( rebalancedHasOccurred == 1 ){
-        Chat_ServerPrivateMessage( player, ErrorColor("Teams have already been balanced!"), false )
+        FSU_PrivateChatMessage( player, "%ETeams have already been balanced!")
         return
     }
 
@@ -268,22 +281,22 @@ void function BTB_BalanceVote ( entity player, array < string > args ){
     }
 
     if ( relativeScoreDifference < 1.2 ){
-        Chat_ServerPrivateMessage( player, ErrorColor("There is no need for a rebalance!"), false )
+        FSU_PrivateChatMessage( player, "%EThere is no need for a rebalance!")
         return
     }
 
     if ( GetPlayerArray().len() < 6 ){
-        Chat_ServerPrivateMessage( player, ErrorColor("Not enough players for a good rebalance!"), false )
+        FSU_PrivateChatMessage( player, "%ENot enough players for a good rebalance!")
         return
     }
 
     if ( matchElapsed < 21 ){
-        Chat_ServerPrivateMessage( player, ErrorColor("It is too soon for a rebalance!"), false )
+        FSU_PrivateChatMessage( player, "%EIt is too soon for a rebalance!")
         return
     }
 
     if ( playersWantingToBalance.find( player ) != -1 ){
-        Chat_ServerPrivateMessage( player, ErrorColor("You have already voted!"), false )
+        FSU_PrivateChatMessage( player, "%EYou have already voted!")
         return
     }
 
@@ -297,8 +310,7 @@ void function BTB_BalanceVote ( entity player, array < string > args ){
     }
 
     playersWantingToBalance.append( player )
-    Chat_ServerPrivateMessage( player, SuccessColor("You voted to rebalance teams!"), false )
-    Chat_ServerBroadcast( AccentTwo(playersWantingToBalance.len() + "/" + required_players) + AnnounceColor(" have voted to rebalance teams and scores, ") + AccentOne(FSU_GetString("FSU_PREFIX") + "tb") + AnnounceColor(" to vote.") )
+    FSU_PrivateChatMessage( player, "%SYou voted to rebalance teams!")
 
     if ( playersWantingToBalance.len() >= required_players ){
         print("[BTB] Team skill balancing triggered by vote")
@@ -308,50 +320,76 @@ void function BTB_BalanceVote ( entity player, array < string > args ){
 }
 
 void function VoteHUD(){
-    foreach ( entity player in GetPlayerArray() ){
-        NSSendAnnouncementMessageToPlayer( player, "TEAM REBALANCE VOTE STARTED", "Use '!tb' in chat to add your vote.", <1,0,0>, 0, 1 )
+    // Announce the starting of a vote
+    if(GetConVarBool("FSV_ENABLE_RUI")){
+        foreach ( entity player in GetPlayerArray() ){
+            NSSendAnnouncementMessageToPlayer( player, "TEAM REBALANCE VOTE STARTED", "Use '!tb' in chat to add your vote.", <1,0,0>, 0, 1 )
+        }
+        wait 1
+        foreach ( entity player in GetPlayerArray() ){
+            NSCreateStatusMessageOnPlayer( player, "", playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + " have voted to rebalance teams", "teambalance"  )
+        }
     }
-    wait 0.1
-    foreach ( entity player in GetPlayerArray() ){
-        NSCreateStatusMessageOnPlayer( player, "", playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + " have voted to rebalance teams", "teambalance"  )
+    if(GetConVarBool("FSV_ENABLE_CHATUI")){
+        FSU_ChatBroadcast(  "A vote to rebalance the teams been started! Use %H%Ptb %Nto vote. %T" + int(GetPlayerArray().len()*voteFraction) + " votes will be needed." )
     }
 
-    int timer = 180
+    int timer = GetConVarInt("btb_vote_duration")
+    int nextUpdate = timer
+    int lastVotes = playersWantingToBalance.len()
 
     while(timer > 0 && playersWantingToBalance.len() < int(GetPlayerArray().len()*voteFraction)){
-        int minutes = int(floor(timer / 60))
-        string seconds = string(timer - (minutes * 60))
-        if (timer - (minutes * 60) < 10){
-            seconds = "0"+seconds
-        }
-
-        foreach (entity player in GetPlayerArray()) {
-            NSEditStatusMessageOnPlayer( player, minutes + ":" + seconds, playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + " have voted to rebalance teams", "teambalance" )
+        if(timer == nextUpdate){
+            int minutes = int(floor(timer / 60))
+            string seconds = string(timer - (minutes * 60))
+            if (timer - (minutes * 60) < 10){
+                seconds = "0"+seconds
+            }
+            if(GetConVarBool("FSV_ENABLE_RUI")){
+                foreach (entity player in GetPlayerArray()) {
+                    NSEditStatusMessageOnPlayer( player, minutes + ":" + seconds, playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + " have voted to rebalance teams", "teambalance" )
+                }
+            }
+            if(GetConVarBool("FSV_ENABLE_CHATUI") && playersWantingToBalance.len() != lastVotes){
+                FSU_ChatBroadcast( "%F[%T"+minutes + ":" + seconds+" %FREMAINING]%H "+ playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + "%N have voted to rebalance teams and scores. %T Use %H%Ptb %Tto vote." )
+                lastVotes = playersWantingToBalance.len()
+            }
+            nextUpdate -= 5
         }
         timer -= 1
         wait 1
     }
 
-    if(playersWantingToBalance.len() >= int(GetPlayerArray().len()*voteFraction)){
-        foreach ( entity player in GetPlayerArray() ){
-            NSSendAnnouncementMessageToPlayer( player, "TEAMS HAVE BEEN REBALANCED", "Teams and scores have been rebalanced by vote!", <1,0,0>, 0, 1 )
+    if(GetConVarBool("FSV_ENABLE_RUI")){
+        if(playersWantingToBalance.len() >= int(GetPlayerArray().len()*voteFraction)){
+            foreach ( entity player in GetPlayerArray() ){
+                NSSendAnnouncementMessageToPlayer( player, "TEAMS HAVE BEEN REBALANCED", "Teams and scores have been rebalanced by vote!", <1,0,0>, 0, 1 )
+            }
+            wait 0.1
+            foreach ( entity player in GetPlayerArray() ){
+                NSEditStatusMessageOnPlayer( player, "PASS", "Teams and have been rebalanced!", "teambalance" )
+            }
         }
-        wait 0.1
-        foreach ( entity player in GetPlayerArray() ){
-            NSEditStatusMessageOnPlayer( player, "PASS", "Teams and have been rebalanced!", "teambalance" )
+        else{
+            foreach (entity player in GetPlayerArray()) {
+                NSEditStatusMessageOnPlayer( player, "FAIL", "Not enough votes to rebalance teams!", "teambalance" )
+            }
         }
     }
-    else{
-        foreach (entity player in GetPlayerArray()) {
-            NSEditStatusMessageOnPlayer( player, "FAIL", "Not enough votes to rebalance teams!", "teambalance" )
+    if (GetConVarBool("FSV_ENABLE_CHATUI") ){
+        if(playersWantingToBalance.len() >= int(GetPlayerArray().len()*voteFraction)){
+            FSU_ChatBroadcast("Final vote received! %STeams have been rebalanced!")
+        }
+        else{
+            FSU_ChatBroadcast("%EThe vote to rebalance teams has failed! %NNot enough votes.")
         }
     }
 
+    playersWantingToBalance.clear()
     wait 10
     foreach ( entity player in GetPlayerArray() ){
         NSDeleteStatusMessageOnPlayer( player, "teambalance" )
     }
-    playersWantingToBalance.clear()
 }
 
 // Execute balancing
@@ -691,7 +729,7 @@ void function BTBThread(){
                     // Activate suggestion for rebalance when accrued enough value, set a new treshold when to suggest again
                     if (accumulatedSuggestionImbalance > suggestionTimer){
                         print("[BTB] Match is uneven, suggesting rebalance")
-                        Chat_ServerBroadcast( AnnounceColor("Looks like this match is uneven, if you'd like to rebalance the teams and their scores, use ") + AccentOne(FSU_GetString("FSU_PREFIX") + "teambalance") + AnnounceColor(".") )
+                        FSU_ChatBroadcast( "Looks like this match is uneven, if you'd like to rebalance the teams and their scores, use %H%Pteambalance%N.")
                         suggestionTimer += suggestionTimer * 1.4
                     }
                 }
@@ -714,7 +752,7 @@ void function BTBThread(){
                     // Activate forced rebalance when accrued enough value
                     if (accumulatedStompImbalance > 18 && matchElapsed > 18){
                         print("[BTB] Match is very uneven, forcing rebalance")
-                        Chat_ServerBroadcast( ErrorColor("Very uneven match detected! ") + AnnounceColor("Teams and scores have been automatically rebalanced.") )
+                        FSU_ChatBroadcast( "%EVery uneven match detected! %NTeams and scores have been automatically rebalanced.")
                         foreach( entity player in GetPlayerArray()){
                             NSSendAnnouncementMessageToPlayer( player, "TEAMS HAVE BEEN AUTO-REBALANCED!", "Detected a very uneven match! Scores have also been leveled.", <1,0,0>, 0, 1 )
                         }
@@ -780,14 +818,14 @@ void function BTBThread(){
                 }
 
                 // Ignore if player is FSU admin
-                if (CheckAdmin(player)){
+                if (FSA_IsAdmin(player)){
                     break
                 }
 
                 // Warn or kick player
                 switch (GetAfkState(player)){
                     case eAntiAfkPlayerState.SUSPICIOUS:
-                        Chat_ServerPrivateMessage( player, ErrorColor("You will soon be kicked for being AFK! MOVE!!!"), false )
+                        FSU_PrivateChatMessage( player, "%EYou will soon be kicked for being AFK! MOVE!!!")
                         NSSendPopUpMessageToPlayer( player, "YOU ARE AFK! MOVE!!!")
                         print("[BTB] AFK player has been warned")
                         break
@@ -803,13 +841,43 @@ void function BTBThread(){
     }
 }
 
-bool function CheckAdmin( entity player ){
-    foreach (string uid in FSU_GetArray("FSU_ADMIN_UIDS")){
-        if( player.GetUID() == uid ){
-            return true
+// FFA Fallback thread
+void function BTBFallbackModeThread(){
+    wait 10
+    while (true){
+        wait 10
+
+        // Check for AFK players
+        if (afkThresold != 0 && GetPlayerArray().len() > afkThresold){
+            foreach (entity player in GetPlayerArray()){
+
+                // Remove data if player has left match
+                if ( !player.IsPlayer() ){
+                    DeletePlayerRecords( player )
+                    break
+                }
+
+                // Ignore if player is FSU admin
+                if (FSA_IsAdmin(player)){
+                    break
+                }
+
+                // Warn or kick player
+                switch (GetAfkState(player)){
+                    case eAntiAfkPlayerState.SUSPICIOUS:
+                        FSU_PrivateChatMessage( player, "%EYou will soon be kicked for being AFK! MOVE!!!")
+                        NSSendPopUpMessageToPlayer( player, "YOU ARE AFK! MOVE!!!")
+                        print("[BTB] AFK player has been warned")
+                        break
+
+                    case eAntiAfkPlayerState.AFK:
+                        print("[BTB] AFK player kicked: " + player.GetPlayerName() + " - " + player.GetUID())
+                        ServerCommand("kickid "+ player.GetUID())
+                        break
+                }
+            }
         }
     }
-    return false
 }
 
 int function GetAfkState( entity player ){
