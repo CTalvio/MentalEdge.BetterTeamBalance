@@ -2,29 +2,25 @@
 
 Yet another autobalance mod. Except it's a lot smorter and comes with additional features, all with the overarching goal of improving team balancing, so that we might enjoy challenging and even matches more often.
 
-Relies on FSU for chat commands. If using FSU, you will want to disable its built-in auto balance and team shuffle features. FSU-fvnk does not come with these features in the first place.
+Relies on FSU for chat commands. If using FSU, you will want to disable its built-in auto balance and team shuffle features.
 
 Get FSU here: [Fifty's Server Utilities](https://northstar.thunderstore.io/package/Fifty/Server_Utilities/)
 
-Alternatively, get my improved version here: [FSU-fvnk](https://northstar.thunderstore.io/package/MentalEdge/FSUfvnk/)
+You can also run BTB without FSU. Though this will disable voting to balance teams, all automatic features will work.
+
+## Check mod.json for all convars and config options!
+### Several of the more powerful team balancing features are disabled by default!
 
 ### Changelog
 
-#### 1.2.6
+#### 1.3.0
 
-- Fixed active limit convar being commented out
-
-#### 1.2.5
-
-- New feature: insidious mode
-    - Active balancing aka "insidious mode"
-    - Set a score difference treshold above which insidious mode is activated
-    - When crossed, the mod will compare team strenghts using the balancing algorithm
-    - If team balance appears to be getting worse (snowballing) the mod will swap two suitable players teams
-    - The swap can only occur while they are dead
-    - Then it will wait and see if team strength begins to develop towards even, and only act again, if not
-- RUI support
-- Fixed round based modes triggering team rebuild on each round
+- Updated for FSU2!
+- Can now be used without FSU, albeit without the ability for players to vote for a rebalance
+- Imbalance detection has been improved
+    - Now takes into account calculated team strength, not just score
+    - A game where the stronger team is losing, will not be detected as imbalanced
+- Can now be run with FFA gamemodes, without crashing, though only AFK kicking will work for obvious reasons
 
 ## Features
 
@@ -45,8 +41,8 @@ Below is an example of how the mod rebalanced a match where one player was doing
 
 #### Team Shuffle
 
-- Player ranking information is saved into a couple convars at the end of a match
-- At the beginning of the next match, the rankings are retrieved and used to inform the shuffle
+- Player ranking information is saved into a couple convars at the end of each match
+- At the beginning of a match, this data is retrieved and used to inform the shuffle
 - The shuffle incorporates *some* randomness, so as to leave room for variation
 - Accounts for players leaving/joining between games, by waiting until the next match to actually build the teams
 - Player scores are taken into account in Attrition, PvP, Skirmish, and Titan Brawl, in other modes, balancing is done based on KD alone
@@ -55,28 +51,53 @@ Below is an example of how the mod rebalanced a match where one player was doing
 
 - Same algorithm as team shuffle, but without any randomness
 - Redistributes points earned by players to their respective new teams (in round based modes, simply equalizes them)
-- Can trigger on vote, and/or on crossing a configurable score imbalance detection threshold
-- By default, only a threshold for informing players via chat about the "!balance" command when relevant, is used
+- Can trigger on vote, and/or on crossing a configurable team imbalance threshold
+- By default, only informing players via chat about the "!teambalance" command, when relevant, is enabled
 - To activate balancing automatically, set the relevant threshold using the correct convar (check mod.json)
 - Tresholds accumulate/decay, the score difference has to remain at or grow past the treshold in order for the relevant action to eventually trigger
 
-#### Auto-Balance
+#### Auto-PlayerCount-Balance
 
 - Handles joining players, placing them first onto the team most in need of bolstering
-- When one team has too many players, one of them is swapped over on death (like FSU)
+- When one team has too many players, one of them is swapped over on death
 - Only swaps over a player, if that player is one that would make the match more even
 - Before doing so, will wait a moment in case new players join
 - Wait is disabled for the first 40 seconds of a match, in order to quickly level team imbalances due to possible leaving players
 - Disabled for the last minute of a match, no victories ruined by a last second swap over to losing side
+
+#### Auto-TeamStrength-Balance - DISABLED BY DEFAULT
+
+- Active balancing aka "insidious mode"
+- This is **DISABLED BY DEFAULT** and must be enabled with a convar (check mod.json)
+- Set an imbalance treshold above which insidious mode is activated
+- When activated, BTB will compare team strenghts using the balancing algorithm
+- If team balance appears to be getting worse (snowballing) the mod will swap the teams of two suitable players
+    - A weak player will be moved to the winning team, and a strong player to the losing one
+    - The swap can only occur while they are dead
+- BTB will then wait and see if team strength begins to develop towards even, and only act again, if not
 
 #### AFK Kicking
 
 - Set a playercount, below which afk players waiting for the server to fill up, wont be kicked
 - UIDs set as admin in FSU are immune
 
-Check mod.json for all convars and config options.
-
 ### Changelogs for previous versions
+
+#### 1.2.6
+
+- Fixed active limit convar being commented out
+
+#### 1.2.5
+
+- New feature: insidious mode
+    - Active balancing aka "insidious mode"
+    - Set a score difference treshold above which insidious mode is activated
+    - When crossed, the mod will compare team strenghts using the balancing algorithm
+    - If team balance appears to be getting worse (snowballing) the mod will swap two suitable players teams
+    - The swap can only occur while they are dead
+    - Then it will wait and see if team strength begins to develop towards even, and only act again, if not
+- RUI support
+- Fixed round based modes triggering team rebuild on each round
 
 #### 1.2.4
 

@@ -3,7 +3,7 @@
    "Description": "Team balancing and shuffling, done smortly",
    "LoadPriority": 8,
    "RequiredOnClient": false,
-   "Version": "1.2.6",
+   "Version": "1.3.0",
 
    "ConVars": [
       {
@@ -16,7 +16,7 @@
       },
       {
          "Name": "btb_suggestion_limit",
-         "DefaultValue": "1.5" // The relative score difference treshold, if the scores stay above this difference, a rebalance will eventually be suggested in chat. Set to zero to disable the suggestion message.
+         "DefaultValue": "1.5" // The relative score difference treshold, if the scores stay above this difference, a rebalance will eventually be suggested in chat. Set to zero to disable the suggestion message. This feature requires FSU.
       },
       {
          "Name": "btb_stomp_limit",
@@ -28,7 +28,7 @@
       },
       {
          "Name": "btb_vote_fraction",
-         "DefaultValue": "0.45" // Fraction of players needed to vote for a rebalance.
+         "DefaultValue": "0.45" // Fraction of players needed to vote for a rebalance. This feature requires FSU.
       },
       {
          "Name": "btb_afk_threshold",
