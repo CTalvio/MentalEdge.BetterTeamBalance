@@ -4,7 +4,9 @@
    "LoadPriority": 8,
    "RequiredOnClient": false,
    "Version": "1.3.0",
-
+   "Dependencies": {
+      "FSCC_ENABLED": "Fifty.ServerChatCommands [FSCC]"
+   },
    "ConVars": [
       {
          "Name": "btb_difference_max",
