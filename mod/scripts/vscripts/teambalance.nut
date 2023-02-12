@@ -1,11 +1,8 @@
 global function BTBInit
 
 array <entity> playersWantingToBalance
-
-struct PlayerRankArray{
-    entity player
-    float scorekd
-}
+table <string, float> lastMatchStats
+table <string, int> timePlayed
 
 struct {
 	table<entity, float> lastmoved = {}
@@ -20,29 +17,31 @@ enum eAntiAfkPlayerState {
 int differenceMax = 1
 int waitTime = 4
 float suggestionLimit = 1.5
-float stompLimit = 2.0
 float activeLimit = 1.6
+float stompLimit = 2.0
 float voteFraction = 0.45
 float relativeScoreDifference = 1.0
-float suggestionTimer = 12.0
+float suggestionTimer = 10.0
 int afkThresold = 5
 int afkTime = 70
-int scoreKDShuffle = 1
+int shuffle = 1
 
 int rebalancedHasOccurred = 0
 int waitedTime = 0
 int matchElapsed = 0
 int subtleRebalancePermitted = 0
-int shuffleDone = 0
+int teamsBuilt = 0 // This is used to prevent team rebuild in round based modes
 
-const SHUFFLE_RANDOMNESS = 0.15
+float accumulatedSuggestionImbalance = 0.0
+float accumulatedStompImbalance = 0.0
+float accumulatedActiveImbalance = 0.0
+
+const SHUFFLE_RANDOMNESS = 0.05
 
 
 void function BTBInit(){
+    lastMatchStats["average"] <- 0.6666
 
-    AddCallback_OnClientDisconnected( DeletePlayerRecords )
-    AddCallback_OnClientConnected( AddPlayerCallbacks )
-    AddCallback_OnPlayerRespawned( Moved )
     foreach (entity player in GetPlayerArray()){
         AddPlayerCallbacks( player )
     }
@@ -55,7 +54,7 @@ void function BTBInit(){
     voteFraction = GetConVarFloat( "btb_vote_fraction" )
     afkThresold = GetConVarInt( "btb_afk_threshold" )
     afkTime = GetConVarInt( "btb_afk_time" )
-    scoreKDShuffle = GetConVarInt( "btb_skd_shuffle" )
+    shuffle = GetConVarInt( "btb_shuffle" )
 
 #if FSCC_ENABLED
     FSCC_CommandStruct command
@@ -73,20 +72,26 @@ void function BTBInit(){
 
     AddCallback_OnPlayerKilled( OnDeathBalance )
     AddCallback_OnClientConnected( AssignJoiningPlayer )
+    AddCallback_OnClientConnected( AddPlayerCallbacks )
+    AddCallback_OnClientDisconnected( DeletePlayerRecords )
+    AddCallback_OnClientDisconnected( DeletePlayTime )
+    AddCallback_OnPlayerRespawned( Moved )
+    AddCallback_GameStateEnter( eGameState.Playing, Playing)
 
-    if (scoreKDShuffle == 1){
+    if (shuffle == 1){
         AddCallback_GameStateEnter( eGameState.Prematch, Prematch)
-        AddCallback_GameStateEnter( eGameState.Playing, Playing)
         AddCallback_GameStateEnter( eGameState.Postmatch, Postmatch)
     }
-
-    thread BTBThread()
 }
 
+void function DeletePlayTime(entity player){
+    if (player.GetUID() in timePlayed){
+        delete timePlayed[player.GetUID()]
+    }
+}
 
 // Saves players and their rankscore into two convars for use during shuffle in next match
 void function Postmatch(){
-    print("[BTB] Saving player ranks to convar")
     if (rebalancedHasOccurred == 1){
         print("[BTB] There was a mid match rebalance, the round ended with scores: " + GameRules_GetTeamScore(TEAM_IMC) + "/" + GameRules_GetTeamScore(TEAM_MILITIA) )
     }
@@ -94,70 +99,62 @@ void function Postmatch(){
         print("[BTB] A mid match rebalance was not triggered, the round ended with scores: " + GameRules_GetTeamScore(TEAM_IMC) + "/" + GameRules_GetTeamScore(TEAM_MILITIA) )
     }
 
-    array<PlayerRankArray> playerRanks = GetPlayersSortedBySkill()
+    print("[BTB] Saving player ranks to convar.....")
+
     string ranklist = ""
     string rankvaluelist = ""
-
-    // Build string with UUIDs and save to convar
-    for(int i = 0; i < GetPlayerArray().len(); i++){
+    foreach( entity player in GetPlayerArray() ){
         if (ranklist == ""){
-            ranklist = playerRanks[i].player.GetUID()
+            ranklist = player.GetUID()
+            rankvaluelist = CalculatePlayerRank(player).tostring()
         }
         else{
-            ranklist = ranklist + "," + playerRanks[i].player.GetUID()
+            ranklist = ranklist + "," + player.GetUID()
+            rankvaluelist = rankvaluelist + "," + CalculatePlayerRank(player).tostring()
         }
     }
     SetConVarString( "uid_list", ranklist )
-
-    // Build string with rankvalues and save to convar
-    for(int i = 0; i < GetPlayerArray().len(); i++){
-        if (rankvaluelist == ""){
-            rankvaluelist = playerRanks[i].scorekd.tostring()
-        }
-        else{
-            rankvaluelist = rankvaluelist + "," + playerRanks[i].scorekd.tostring()
-        }
-    }
     SetConVarString( "rank_list", rankvaluelist )
+    print("[BTB] DONE")
 }
 
 
 // Rebuilds the player rank array and appends any newcomers that joined in the interrim
 void function Prematch(){
-    if (GetPlayerArray().len() > 1 && GetConVarString( "uid_list" ) != "" && shuffleDone == 0){
+    if (GetPlayerArray().len() > 1 && GetConVarString( "uid_list" ) != "" && teamsBuilt == 0){
         print("[BTB] Pulling player ranks and shuffling teams")
-        array <PlayerRankArray> playerRanks
         array <string> previusMatchUID = split( GetConVarString( "uid_list" ), "," )
         array <string> previusMatchRankValue = split( GetConVarString( "rank_list" ), "," )
 
         // Rebuild ranked player array, discarding any players no longer on the server
-        for(int i = 0; i < split( GetConVarString( "uid_list" ), "," ).len(); i++){
+        float averageValue = 0
+        for(int i = 0; i < previusMatchUID.len(); i++){
+            float rankValue = previusMatchRankValue[i].tofloat() * RandomFloatRange( 1.0 - SHUFFLE_RANDOMNESS, 1.0 )
+            lastMatchStats[previusMatchUID[i]] <- rankValue
+            averageValue += rankValue
+
             foreach( entity player in GetPlayerArray() ){
                 if ( previusMatchUID[i] == player.GetUID() ){
-                    PlayerRankArray temp
-                    temp.player = player
-                    temp.scorekd = previusMatchRankValue[i].tofloat() * RandomFloatRange( 1.0 - SHUFFLE_RANDOMNESS, 1.0 )
-                    print("[BTB] Staying player: " + temp.player.GetPlayerName() + " - " + temp.scorekd)
-                    playerRanks.append( temp )
+                    print("[BTB] Staying player: " + player.GetPlayerName() + " - " + rankValue)
                 }
             }
         }
+
+        if (lastMatchStats.len() > 2)
+            lastMatchStats["average"] <- averageValue / lastMatchStats.len()
+
         // Add any new players who joined
         foreach( entity player in GetPlayerArray() ){
             if ( previusMatchUID.find( player.GetUID() ) == -1 ){
-                PlayerRankArray temp
-                temp.player = player
-                temp.scorekd = 1.001
-                print("[BTB] Joining player: " + temp.player.GetPlayerName() + " - " + temp.scorekd)
-                playerRanks.append( temp )
+                print("[BTB] Joining player: " + player.GetPlayerName() )
             }
         }
-        ExecuteStatsBalance( playerRanks )
+        ExecuteStatsBalance()
     }
     else if( abs(GetPlayerArrayOfTeam(TEAM_IMC).len()-GetPlayerArrayOfTeam(TEAM_MILITIA).len()) > differenceMax ){
         waitedTime = waitTime
     }
-    shuffleDone = 1
+    teamsBuilt = 1
 }
 
 void function Playing(){
@@ -169,46 +166,120 @@ void function Playing(){
         thread BTBThread()
 }
 
+// Check if the match is close to ending
+bool function IsMatchEnding(){
+    int scoreLimit = ( GameMode_GetScoreLimit( "aitdm" )*0.8 ).tointeger()
+    int timeLeft = GameTime_TimeLeftSeconds()
+
+    int scoreImc = GameRules_GetTeamScore(TEAM_IMC)
+    int scoreMil = GameRules_GetTeamScore(TEAM_MILITIA)
+
+    if( scoreImc > scoreLimit || scoreMil > scoreLimit || timeLeft < 180 )
+        return true
+
+    return false
+}
 
 // Calculate a players ranking score
 float function CalculatePlayerRank( entity player ){
-    int deaths = player.GetPlayerGameStat(PGS_DEATHS)
-    int kills = player.GetPlayerGameStat(PGS_KILLS)
-    float kd = 0.0
-    float score = 1.0
-    if (GAMETYPE == "tdm" || GAMETYPE == "ps" || GAMETYPE == "ttdm"){
-        score = (player.GetPlayerGameStat(PGS_KILLS) * 1.5 / 100) + 1
-    }
-    else if (GAMETYPE == "aitdm") {
-        score = (player.GetPlayerGameStat(PGS_ASSAULT_SCORE) * 1.5 / 1000) + 1
+    if( matchElapsed < 6 ){
+        if (player.GetUID() in lastMatchStats)
+            return lastMatchStats[player.GetUID()]
+        else
+            return lastMatchStats["average"]
     }
 
-    if(deaths == 0){
-        if (kills == 0){
-            kd = 1.0
-        }
-        else{
-            kd = 1.0 * kills / 0.9
-        }
+    float deaths = player.GetPlayerGameStat(PGS_DEATHS).tofloat()
+    float kills = player.GetPlayerGameStat(PGS_KILLS).tofloat()
+    float score = 0.0
+    float time = 1.0
+    if( player.GetUID() in timePlayed )
+        time = timePlayed[player.GetUID()].tofloat() / 6.0
+    float killrate
+    float deathrate
+
+    if (GAMETYPE == "aitdm")
+        kills = player.GetPlayerGameStat(PGS_ASSAULT_SCORE).tofloat() / 5
+    if (GAMETYPE == "cp"){
+        score = player.GetPlayerGameStat(PGS_ASSAULT_SCORE).tofloat() / 200
+        score += player.GetPlayerGameStat(PGS_DEFENSE_SCORE).tofloat() / 300
+        kills *= 0.75
     }
-    else{
-        if (kills == 0){
-            kd = 0.9 / deaths
-        }
-        else{
-            kd = 1.0 * kills / deaths
-        }
+    if (GAMETYPE == "fw"){
+        score = player.GetPlayerGameStat(PGS_DEFENSE_SCORE).tofloat() / 200
+        score += player.GetPlayerGameStat(PGS_ASSAULT_SCORE).tofloat() / 1500
+        kills *= 0.75
     }
-    return score * kd
+
+    if (kills == 0)
+        killrate = 0.5 / time
+    else
+        killrate = (kills + score) / time
+
+    if (deaths == 0)
+        deathrate = 0.5 / time
+    else
+        deathrate = deaths / time
+
+    // Check if this player was in the last match, and integrate it if they were
+    if( !IsMatchEnding() && player.GetUID() in lastMatchStats )
+        return ((killrate - ( deathrate / 2 )) + ((lastMatchStats[player.GetUID()])/2) ) / 1.5
+
+    return killrate - ( deathrate / 2 )
 }
 
 // Calculate the strength of a team
 float function CalculateTeamStrength( int team ){
-    float teamStrength = 1.0
+    float teamStrength = 0.0
     foreach(entity player in GetPlayerArrayOfTeam(team) ){
-        teamStrength *= CalculatePlayerRank( player )
+        teamStrength += CalculatePlayerRank( player )
     }
+    if( GetPlayerArrayOfTeam(team).len() == GetPlayerArrayOfTeam(GetOtherTeam(team)).len()+1 )
+        teamStrength -= lastMatchStats["average"]/2.2
     return teamStrength
+}
+
+// Calculate what the strength of a team would be, if the player were to be removed, and replacement added instead
+float function CalculateTeamStrengtWithout( entity player, entity replacement ){
+    float teamStrength = CalculatePlayerRank(replacement)
+    int team = player.GetTeam()
+    foreach(entity teamMember in GetPlayerArrayOfTeam(team) ){
+        if(teamMember != player)
+            teamStrength += CalculatePlayerRank( teamMember )
+    }
+    if( GetPlayerArrayOfTeam(team).len() == GetPlayerArrayOfTeam(GetOtherTeam(team)).len()+1 )
+        teamStrength -= lastMatchStats["average"]/2.2
+    return teamStrength
+}
+
+// Execute best possible swap with another player to improve team balance
+void function ExecuteBestPossibleSwap( entity teamMember){
+    float strengthDifference = fabs(CalculateTeamStrength( TEAM_MILITIA ) - CalculateTeamStrength( TEAM_IMC ))
+
+    // Find best possible other swap
+    float lastStrengthDifference = 100
+    entity opponentToSwap
+    foreach( entity player in GetPlayerArrayOfTeam(GetOtherTeam(teamMember.GetTeam())) ){
+        float newStrengthDifference = fabs(CalculateTeamStrengtWithout( player, teamMember ) - CalculateTeamStrengtWithout( teamMember, player ))
+        if ( lastStrengthDifference > newStrengthDifference ){
+            opponentToSwap = player
+            lastStrengthDifference = newStrengthDifference
+        }
+    }
+
+    // Execute the swap if it meets requirements
+    if( strengthDifference > lastStrengthDifference ){
+        SetTeam( teamMember, GetOtherTeam( teamMember.GetTeam() ) )
+        SetTeam( opponentToSwap, GetOtherTeam( opponentToSwap.GetTeam() ) )
+    }
+    if(IsAlive(teamMember) && GetGameState() == eGameState.Prematch){
+        teamMember.Die()
+        print("[BTB] Why is this player alive? Killing them.")
+    }
+    if(IsAlive(opponentToSwap) && GetGameState() == eGameState.Prematch){
+        opponentToSwap.Die()
+        print("[BTB] Why is this player alive? Killing them.")
+    }
 }
 
 // Place a joining player onto the team most in need of bolstering
@@ -226,49 +297,43 @@ void function AssignJoiningPlayer( entity player ){
     }
 }
 
-// Execute insidious mode balancing
+// Execute insidious mode balancing, always executes during first 80 seconds of a match
 void function OnDeathBalance( entity victim, entity attacker, var damageInfo ){
-    if (subtleRebalancePermitted == 1){
-        float victimStrength = CalculatePlayerRank( victim )
-        float victimTeamStrength = 1.0
-        float opposingTeamStrength = 1.0
-        array <entity> deadOpposingPlayers
-        foreach(entity player in GetPlayerArrayOfTeam( victim.GetTeam() )){
-            victimTeamStrength *= CalculatePlayerRank( player )
-        }
-        foreach(entity player in GetPlayerArrayOfTeam( GetOtherTeam( victim.GetTeam() ) )){
-            opposingTeamStrength *= CalculatePlayerRank( player )
-            if (!(IsAlive(player))){
-               deadOpposingPlayers.append(player)
-            }
-        }
-        float strengthDifference = fabs(victimTeamStrength-opposingTeamStrength)
+    if (subtleRebalancePermitted == 1 || matchElapsed < 10){
+        float strengthDifference = fabs(CalculateTeamStrength( TEAM_MILITIA ) - CalculateTeamStrength( TEAM_IMC ))
 
-        float lastImprovement = strengthDifference
+        array <entity> deadOpposingPlayers
+        foreach(entity player in GetPlayerArrayOfTeam(GetOtherTeam(victim.GetTeam())) ){
+            if( !IsAlive(player) )
+               deadOpposingPlayers.append(player)
+        }
+
+        float lastStrengthDifference = 100
         entity opponentToSwap
         foreach(entity player in deadOpposingPlayers){
-            float newOpposingTeamStrength = (opposingTeamStrength / CalculatePlayerRank(player)) * victimStrength
-            float newVictimTeamStrength = (victimTeamStrength / victimStrength) * CalculatePlayerRank(player)
-            if ( lastImprovement > fabs(newOpposingTeamStrength-newVictimTeamStrength) ){
+            float newStrengthDifference = fabs(CalculateTeamStrengtWithout( player, victim ) - CalculateTeamStrengtWithout( victim, player ))
+            if ( lastStrengthDifference > newStrengthDifference ){
                 opponentToSwap = player
-                lastImprovement = fabs(newOpposingTeamStrength-newVictimTeamStrength)
+                lastStrengthDifference = newStrengthDifference
             }
         }
 
-        if( strengthDifference > lastImprovement ){
+        if( strengthDifference > lastStrengthDifference && activeLimit < (strengthDifference - lastStrengthDifference) ){
             SetTeam( victim, GetOtherTeam( victim.GetTeam() ) )
             SetTeam( opponentToSwap, GetOtherTeam( opponentToSwap.GetTeam() ) )
             subtleRebalancePermitted = 0
-            print("[BTB] Team strengths were wack, the teams of " + victim.GetPlayerName() + " and " + opponentToSwap.GetPlayerName() + " have been swapped to try and remedy this.")
+            if( accumulatedStompImbalance > 0 )
+                accumulatedStompImbalance -= 8
+            print("[BTB] Team balance has been improved by switching the teams of " + victim.GetPlayerName() + " and " + opponentToSwap.GetPlayerName() + ".")
         }
     }
     thread PlayerCountAutobalance(victim)
 }
 
-// Check if playercount balancing is needed on death
+// Check if playercount balancing is needed on death, always executes during first 40 seconds of a match
 void function PlayerCountAutobalance( entity victim ){
     wait 1
-    if( waitedTime >= waitTime ){
+    if( waitedTime >= waitTime && matchElapsed < 5){
         if ( differenceMax == 0 || IsFFAGame() || GetPlayerArray().len() == 1 || abs(GetPlayerArrayOfTeam(TEAM_IMC).len() - GetPlayerArrayOfTeam(TEAM_MILITIA).len()) <= differenceMax || GameTime_TimeLeftSeconds() < 60 ){
             return
         }
@@ -279,17 +344,28 @@ void function PlayerCountAutobalance( entity victim ){
         }
 
         // Check if switching this player over would create significantly worse teams
-        float victimTeam = 1.0
-        float opposingTeam = 1.0
-        foreach(entity player in GetPlayerArrayOfTeam( victim.GetTeam() )){
-            victimTeam *= CalculatePlayerRank( player )
+        float victimTeamStrength = CalculateTeamStrength( victim.GetTeam() )
+        float opposingTeamStrength = CalculateTeamStrength( GetOtherTeam(victim.GetTeam()) )
+        float currentStrengthDifference = fabs(victimTeamStrength-opposingTeamStrength)
+
+        float victimTeamStrengthWithoutVictim = 0.0
+        float opposingTeamStreanthWithVictim = CalculatePlayerRank( victim )
+
+        foreach(entity player in GetPlayerArrayOfTeam(victim.GetTeam()) ){
+            if( player != victim)
+                victimTeamStrengthWithoutVictim += CalculatePlayerRank( player )
         }
-        foreach(entity player in GetPlayerArrayOfTeam( GetOtherTeam( victim.GetTeam() ) )){
-            opposingTeam *= CalculatePlayerRank( player )
+        victimTeamStrengthWithoutVictim = victimTeamStrengthWithoutVictim / ( GetPlayerArrayOfTeam(victim.GetTeam()).len() - 1 )
+
+        foreach(entity player in GetPlayerArrayOfTeam(GetOtherTeam(victim.GetTeam())) ){
+            opposingTeamStreanthWithVictim += CalculatePlayerRank( player )
         }
-        if ( fabs(victimTeam - opposingTeam) < fabs((opposingTeam*CalculatePlayerRank(victim)) - (victimTeam/CalculatePlayerRank(victim))) - 0.12 ){
+        opposingTeamStreanthWithVictim = opposingTeamStreanthWithVictim / ( GetPlayerArrayOfTeam(GetOtherTeam(victim.GetTeam())).len() + 1 )
+
+        float potentialStrengthDifference = fabs(opposingTeamStreanthWithVictim-victimTeamStrengthWithoutVictim)
+
+        if( potentialStrengthDifference > currentStrengthDifference )
             return
-        }
 
         // Passed checks, balance the teams
         print("[BTB] The team of " + victim.GetPlayerName() + " has been switched")
@@ -323,14 +399,9 @@ void function BTB_BalanceVote ( entity player, array < string > args ){
         return
     }
 
-    if ( GameRules_GetTeamScore(TEAM_MILITIA) > GameRules_GetTeamScore(TEAM_IMC) ){
-        relativeScoreDifference = 1.0 * GameRules_GetTeamScore(TEAM_MILITIA) / GameRules_GetTeamScore(TEAM_IMC)
-    }
-    else{
-        relativeScoreDifference = 1.0 * GameRules_GetTeamScore(TEAM_IMC) / GameRules_GetTeamScore(TEAM_MILITIA)
-    }
+    int scoreDifference = abs(GameRules_GetTeamScore(TEAM_IMC) - GameRules_GetTeamScore(TEAM_MILITIA))
 
-    if ( relativeScoreDifference < 1.2 ){
+    if ( scoreDifference < 90 ){
         FSU_PrivateChatMessage( player, "%EThere is no need for a rebalance!")
         return
     }
@@ -355,7 +426,7 @@ void function BTB_BalanceVote ( entity player, array < string > args ){
         required_players = 1
     }
 
-    if ( playersWantingToBalance.len() == 1 ){
+    if ( playersWantingToBalance.len() == 0 ){
         thread VoteHUD()
     }
 
@@ -364,7 +435,7 @@ void function BTB_BalanceVote ( entity player, array < string > args ){
 
     if ( playersWantingToBalance.len() >= required_players ){
         print("[BTB] Team skill balancing triggered by vote")
-        ExecuteStatsBalance( GetPlayersSortedBySkill() )
+        ExecuteStatsBalance()
         rebalancedHasOccurred = 1
     }
 }
@@ -443,183 +514,29 @@ void function VoteHUD(){
 }
 #endif
 
-// Execute balancing
-void function ExecuteStatsBalance( array<PlayerRankArray> playerRanks ){
+// Execute balanced team rebuild
+void function ExecuteStatsBalance(){
+    subtleRebalancePermitted = 0
+    float currentStrengthDifference = fabs( CalculateTeamStrength(TEAM_IMC) - CalculateTeamStrength(TEAM_MILITIA) )
+    float improvement = 1
+    int pass = 0
 
-    float imcTeamFactor = 1.0
-    float milTeamFactor = 1.0
-    array <int> imcIndex = [0]
-    array <int> milIndex = [1]
+    print( "[BTB] Initial team strength difference: " + currentStrengthDifference )
 
-    // Initial team division, get as close to equal as possible assigning one player at a time and keeping team sizes equal
-    for(int i = 0; i < GetPlayerArray().len(); i++){
-        // Start by placing two best players onto opposing teams
-        if ( i == 0 ){
-            SetTeam(playerRanks[i].player, TEAM_IMC)
-            imcTeamFactor = playerRanks[i].scorekd
-        }
-        else if( i == 1 ){
-            SetTeam(playerRanks[i].player, TEAM_MILITIA)
-            milTeamFactor = playerRanks[i].scorekd
-        }
+    while( pass < 6 && improvement != 0){
+        pass++
 
-        // Go through the next players in pairs, placing the better of each pair onto the weaker team and vice versa
-        if ( !IsEven(i) && i > 1 ){
-            if ( imcIndex.len() < milIndex.len() ){
-                SetTeam(playerRanks[i].player, TEAM_IMC)
-                imcTeamFactor *= playerRanks[i].scorekd
-                imcIndex.append(i)
-            }
-            else{
-                SetTeam(playerRanks[i].player, TEAM_MILITIA)
-                milTeamFactor *= playerRanks[i].scorekd
-                milIndex.append(i)
-            }
-        }
-        else if( i > 1 ){
-            if ( imcTeamFactor < milTeamFactor ){
-                SetTeam(playerRanks[i].player, TEAM_IMC)
-                imcTeamFactor *=  playerRanks[i].scorekd
-                imcIndex.append(i)
-            }
-            else{
-                SetTeam(playerRanks[i].player, TEAM_MILITIA)
-                milTeamFactor *= playerRanks[i].scorekd
-                milIndex.append(i)
-            }
-        }
+        foreach(player in GetPlayerArray())
+            ExecuteBestPossibleSwap( player )
+
+        improvement = currentStrengthDifference - (fabs( CalculateTeamStrength(TEAM_IMC) - CalculateTeamStrength(TEAM_MILITIA) ))
+
+        currentStrengthDifference = fabs( CalculateTeamStrength(TEAM_IMC) - CalculateTeamStrength(TEAM_MILITIA) )
+
+        print( "[BTB] PASS " + pass + " - Team strength difference improved by " + improvement + " to: " + currentStrengthDifference )
     }
 
-// Debugging prints
-//     foreach( int i in imcIndex ){
-//         print ( "[BTB] TEAM IMC - RANK:" + i + " - " + playerRanks[i].player.GetPlayerName() )
-//     }
-//     foreach( int i in milIndex ){
-//         print ( "[BTB] TEAM MIL - RANK:" + i + " - " + playerRanks[i].player.GetPlayerName() )
-//     }
-
-    print( "[BTB] Initial team strength difference: " + fabs(imcTeamFactor-milTeamFactor) )
-
-    // If at least four players present, attempt to refine team balancing further, should it be needed
-    if ( GetPlayerArray().len() > 3 && fabs(imcTeamFactor - milTeamFactor) > 0.10){
-        for (int loop = 0 ; loop < (GetPlayerArray().len()/2)-1.5 ; loop++) {
-            float newImcFactor
-            float newMilFactor
-
-            // Check which team needs better players (determines angle of diagonal swap)
-            if ( imcTeamFactor < milTeamFactor ){
-                newImcFactor = imcTeamFactor/playerRanks[imcIndex[loop+1]].scorekd*playerRanks[milIndex[loop]].scorekd
-                newMilFactor = milTeamFactor/playerRanks[milIndex[loop]].scorekd*playerRanks[imcIndex[loop+1]].scorekd
-
-                // If this swap would be better, perform it
-                if ( fabs(newImcFactor - newMilFactor) < fabs(imcTeamFactor - milTeamFactor) ){
-
-                    //Set teams
-                    SetTeam( playerRanks[imcIndex[loop+1]].player, TEAM_MILITIA )
-                    SetTeam( playerRanks[milIndex[loop]].player, TEAM_IMC )
-                    // Debugging print
-                    //print( "[BTB] " + playerRanks[imcIndex[loop+1]].player.GetPlayerName() + " was swapped with " + playerRanks[milIndex[loop]].player.GetPlayerName() )
-
-                    // Do a switcharoo of team indexes
-                    int imcToMil = imcIndex[loop+1]
-                    int milToImc = milIndex[loop]
-                    imcIndex.insert( loop , milToImc )
-                    milIndex.insert( loop , imcToMil )
-                    milIndex.remove( milIndex.find(milToImc) )
-                    imcIndex.remove( imcIndex.find(imcToMil) )
-
-                    // Apply new factors
-                    imcTeamFactor = newImcFactor
-                    milTeamFactor = newMilFactor
-                }
-            }
-            else {
-                newImcFactor = imcTeamFactor/playerRanks[imcIndex[loop]].scorekd*playerRanks[milIndex[loop+1]].scorekd
-                newMilFactor = milTeamFactor/playerRanks[milIndex[loop+1]].scorekd*playerRanks[imcIndex[loop]].scorekd
-
-                // If this swap would be better, perform it
-                if ( fabs(newImcFactor - newMilFactor) < fabs(imcTeamFactor - milTeamFactor) ){
-
-                    //Set teams
-                    SetTeam( playerRanks[imcIndex[loop]].player, TEAM_MILITIA )
-                    SetTeam( playerRanks[milIndex[loop+1]].player, TEAM_IMC )
-                    // Debugging print
-                    //print( "[BTB] " + playerRanks[imcIndex[loop]].player.GetPlayerName() + " was swapped with " + playerRanks[milIndex[loop+1]].player.GetPlayerName() )
-
-                    // Do a switcharoo of team indexes
-                    int imcToMil = imcIndex[loop]
-                    int milToImc = milIndex[loop+1]
-                    imcIndex.insert( loop , milToImc )
-                    milIndex.insert( loop , imcToMil )
-                    imcIndex.remove( imcIndex.find(imcToMil) )
-                    milIndex.remove( milIndex.find(milToImc) )
-
-                    // Apply new factors
-                    imcTeamFactor = newImcFactor
-                    milTeamFactor = newMilFactor
-                }
-            }
-
-            // Calculate potential of horizontal swap
-            newImcFactor = imcTeamFactor/playerRanks[imcIndex[loop+1]].scorekd*playerRanks[milIndex[loop+1]].scorekd
-            newMilFactor = milTeamFactor/playerRanks[milIndex[loop+1]].scorekd*playerRanks[imcIndex[loop+1]].scorekd
-
-            // If this swap would be better, perform it
-            if ( fabs(newImcFactor - newMilFactor) < fabs(imcTeamFactor - milTeamFactor) ){
-
-                //Set teams
-                SetTeam( playerRanks[imcIndex[loop+1]].player, TEAM_MILITIA )
-                SetTeam( playerRanks[milIndex[loop+1]].player, TEAM_IMC )
-                // Debugging print
-                //print( "[BTB] " + playerRanks[imcIndex[loop+1]].player.GetPlayerName() + " was swapped with " + playerRanks[milIndex[loop+1]].player.GetPlayerName() )
-
-                // Do a switcharoo of team indexes
-                int imcToMil = imcIndex[loop+1]
-                int milToImc = milIndex[loop+1]
-                imcIndex.insert( loop+1 , milToImc )
-                milIndex.insert( loop+1 , imcToMil )
-                milIndex.remove( milIndex.find(milToImc) )
-                imcIndex.remove( imcIndex.find(imcToMil) )
-
-
-                // Apply new factors
-                imcTeamFactor = newImcFactor
-                milTeamFactor = newMilFactor
-            }
-
-            print( "[BTB] Pass " + (loop+1) + " - team strength difference: " + fabs(imcTeamFactor-milTeamFactor) )
-
-// Debugging prints
-//             foreach( int i in imcIndex ){
-//                 print ( "[BTB] TEAM IMC - RANK: " + i + " - " + playerRanks[i].player.GetPlayerName() )
-//             }
-//             foreach( int i in milIndex ){
-//                 print ( "[BTB] TEAM MIL - RANK: " + i + " - " + playerRanks[i].player.GetPlayerName() )
-//             }
-
-            // Stop loop if small enough difference achieved
-            if ( fabs(imcTeamFactor - milTeamFactor) < 0.10 ){
-                break
-            }
-        }
-    }
-
-    print( "[BTB] Final team strength difference: " + fabs(imcTeamFactor-milTeamFactor) )
-
-// Debugging prints
-//     imcTeamFactor = 1.0
-//     milTeamFactor = 1.0
-//     for(int i = 0; i < GetPlayerArray().len(); i++){
-//         if (playerRanks[i].player.GetTeam() == TEAM_IMC){
-//             imcTeamFactor *= playerRanks[i].scorekd
-//         }
-//         else{
-//             milTeamFactor *= playerRanks[i].scorekd
-//         }
-//     }
-//
-//     print( "[BTB] Confirm imcTeamStrength: " + imcTeamFactor )
-//     print( "[BTB] COnfirm milTeamStrength: " + milTeamFactor )
+    print( "[BTB] No further improvement possible. Achieved a team strength difference of: " + currentStrengthDifference)
 
     //Redistribute scores
     if ( GetGameState() == eGameState.Playing ){
@@ -658,52 +575,29 @@ void function ExecuteStatsBalance( array<PlayerRankArray> playerRanks ){
     }
 }
 
-// Sort players by their ranking
-array<PlayerRankArray> function GetPlayersSortedBySkill(){
-    array <PlayerRankArray> pskdArr
-    foreach (entity player in GetPlayerArray()) {
-        PlayerRankArray temp
-        temp.player = player
-        temp.scorekd = CalculatePlayerRank(player)
-        pskdArr.append(temp)
-    }
-    pskdArr.sort(PlayerRankArraySort)
-    return pskdArr
-}
-
-int function PlayerRankArraySort(PlayerRankArray data1, PlayerRankArray data2)
-{
-  if ( data1.scorekd == data2.scorekd )
-    return 0
-  return data1.scorekd < data2.scorekd ? 1 : -1
-}
-
-
 // Main thread
 void function BTBThread(){
-    float accumulatedSuggestionImbalance = 0.0
-    float accumulatedStompImbalance = 0.0
-    float accumulatedActiveImbalance = 0.0
     float previousStrengthDifference = 0.0
-    int activeFailCount = 0
+    int previousAbsoluteScoreDifference = 0
 
-    array <float> imcTeamValues
-    array <float> milTeamValues
-
+    wait 10
     while ( GetGameState() == eGameState.Playing ){
-        wait 10
+
+        // Increment player time played counters
+        foreach(entity player in GetPlayerArray())
+            if(player.GetUID() in timePlayed )
+                timePlayed[player.GetUID()] += 1
+            else
+                timePlayed[player.GetUID()] <- 1
 
         // Check for player count imbalance
-        if (differenceMax != 0 && !IsFFAGame() && GetPlayerArray().len() > 1 && GameTime_TimeLeftSeconds() > 60){
+        if (differenceMax != 0 && !IsFFAGame() && GetPlayerArray().len() > 1){
             int difference = abs(GetPlayerArrayOfTeam(TEAM_IMC).len() - GetPlayerArrayOfTeam(TEAM_MILITIA).len())
 
             if (difference > differenceMax)
                 waitedTime += difference - differenceMax
             else{
                 waitedTime = 0
-            }
-            if (matchElapsed < 4){
-                waitedTime = 30
             }
         }
 
@@ -712,7 +606,11 @@ void function BTBThread(){
 
             int imcScore = GameRules_GetTeamScore(TEAM_IMC)
             int militiaScore = GameRules_GetTeamScore(TEAM_MILITIA)
-            int absoluteScoreDifference = abs( imcScore-militiaScore )
+            int absoluteScoreDifference = abs( imcScore - militiaScore )
+
+            float imcTeamStrength = CalculateTeamStrength(TEAM_IMC)
+            float milTeamStrength = CalculateTeamStrength(TEAM_MILITIA)
+            float strengthDifference = fabs( imcTeamStrength - milTeamStrength )
 
             // Calculate the relative difference of the score between teams
             if (militiaScore > imcScore)
@@ -720,74 +618,95 @@ void function BTBThread(){
             else
                 relativeScoreDifference = 1.0 * imcScore / militiaScore
 
-            // Calculate average team strength values for the last minute
-            imcTeamValues.append( CalculateTeamStrength(TEAM_IMC) )
-            milTeamValues.append( CalculateTeamStrength(TEAM_MILITIA) )
-            if( imcTeamValues.len() > 6 )
-                imcTeamValues.remove(0)
-            if( milTeamValues.len() > 6 )
-                milTeamValues.remove(0)
-            float imcTeamStrength = 1.0
-            float milTeamStrength = 1.0
-            foreach(float str in imcTeamValues)
-                milTeamStrength *= str
-            foreach(float str in milTeamValues)
-                milTeamStrength *= str
-            float strengthDifference = fabs( imcTeamStrength-milTeamStrength )
 
             // Determine whether the team in the lead is also the stronger team
             bool leadTeamIsStronger = false
             if( imcScore > militiaScore && imcTeamStrength > milTeamStrength || militiaScore > imcScore && milTeamStrength > imcTeamStrength)
                 leadTeamIsStronger = true
 
+            // Determine whether the leading team is snowballing
+            bool isMatchSnowballing = false
+            if( strengthDifference >= previousStrengthDifference || absoluteScoreDifference >= previousAbsoluteScoreDifference)
+                isMatchSnowballing = true
+
+            previousStrengthDifference = strengthDifference
+            previousAbsoluteScoreDifference = absoluteScoreDifference
+
+            print("[BTBDEBUG] Team strength difference: " + strengthDifference)
+            print("[BTBDEBUG] Absolute score difference: " + absoluteScoreDifference)
+            print("[BTBDEBUG] Is lead team stronger: " + leadTeamIsStronger)
+
             //General requirement switch
-            if (matchElapsed > 14 && absoluteScoreDifference > 50 && rebalancedHasOccurred == 0 && GameTime_TimeLeftSeconds() > 300 && GetPlayerArray().len() > 5){
+            if (matchElapsed > 14 && absoluteScoreDifference > 50 && rebalancedHasOccurred == 0 && !IsMatchEnding() && GetPlayerArray().len() > 3){
 
             #if FSCC_ENABLED
                 // Suggestion switch
                 if ( suggestionLimit != 0 ){
 
                     // Accrue a value if above the treshold, decay when below
-                    if ( leadTeamIsStronger && relativeScoreDifference > suggestionLimit && strengthDifference > suggestionLimit || leadTeamIsStronger && absoluteScoreDifference > suggestionLimit*120 && strengthDifference > suggestionLimit){
-                        accumulatedSuggestionImbalance += 1.0 + (absoluteScoreDifference / 150 )
-                        print("[BTB] accumulated suggestion imbalance/threshold: " + accumulatedSuggestionImbalance + " / " + suggestionTimer)
+                    if ( leadTeamIsStronger && isMatchSnowballing && relativeScoreDifference > suggestionLimit && strengthDifference > suggestionLimit || leadTeamIsStronger && isMatchSnowballing && absoluteScoreDifference > suggestionLimit*100 && strengthDifference > suggestionLimit ){
+                        accumulatedSuggestionImbalance += 1.0 + (absoluteScoreDifference.tofloat() / 100 )
+                        print("[BTB] Accumulating suggestion imbalance/threshold: " + accumulatedSuggestionImbalance + " / " + suggestionTimer)
                     }
                     else{
-                        accumulatedSuggestionImbalance -= 1.5
+                        accumulatedSuggestionImbalance -= 0.5
                         if (accumulatedSuggestionImbalance < 0){
                             accumulatedSuggestionImbalance = 0
-                            suggestionTimer = 12.0
+                            suggestionTimer = 10.0
                         }
                         else
-                            print("[BTB] accumulated suggestion imbalance/threshold: " + accumulatedSuggestionImbalance + " / " + suggestionTimer)
+                            print("[BTB] Decaying suggestion imbalance/threshold: " + accumulatedSuggestionImbalance + " / " + suggestionTimer)
                     }
 
                     // Activate suggestion for rebalance when accrued enough value, set a new treshold when to suggest again
                     if (accumulatedSuggestionImbalance > suggestionTimer){
                         print("[BTB] Match is uneven, suggesting rebalance")
                         FSU_ChatBroadcast( "Looks like this match is uneven, if you'd like to rebalance the teams and their scores, use %H%Pteambalance%N.")
-                        suggestionTimer += suggestionTimer * 1.4
+                        suggestionTimer += suggestionTimer * 2
                     }
                 }
             #endif
 
+                // Check for team strength imbalance
+                if ( activeLimit != 0 && subtleRebalancePermitted == 0){
+                    // Accrue a value if above the treshold, decay when below
+                    if ( leadTeamIsStronger && isMatchSnowballing && relativeScoreDifference > activeLimit && strengthDifference > activeLimit || leadTeamIsStronger && absoluteScoreDifference > activeLimit*100 && strengthDifference > activeLimit ){
+                        accumulatedActiveImbalance += 1.0 + ( absoluteScoreDifference.tofloat() / 100 )
+                        print("[BTB] Accumulating active imbalance/threshold: " + accumulatedActiveImbalance + " / 12")
+                    }
+                    else{
+                        accumulatedActiveImbalance -= 0.5
+                        if (accumulatedActiveImbalance < 0)
+                            accumulatedActiveImbalance = 0
+                        else
+                            print("[BTB] Decaying active imbalance/threshold: " + accumulatedActiveImbalance + " / 12")
+                    }
+
+                    // When enough value accrued allow insidious/active rebalancing
+                    if (accumulatedActiveImbalance > 12){
+                        print("[BTB] Active/Insidious rebalancing has been triggered! Looking for candidates.")
+                        subtleRebalancePermitted = 1
+                        accumulatedActiveImbalance = 0
+                    }
+                }
+
                 // Forced rebalance switch
                 if ( stompLimit != 0 ){
                     // Accrue a value if above the treshold, decay when below
-                    if (  leadTeamIsStronger && relativeScoreDifference > stompLimit ||  leadTeamIsStronger && absoluteScoreDifference > stompLimit*140 || leadTeamIsStronger && strengthDifference > suggestionLimit ){
-                        accumulatedStompImbalance += 1.0 + (absoluteScoreDifference / 150 )
-                        print("[BTB] accumulated stomp imbalance/threshold: " + accumulatedStompImbalance + " / 18")
+                    if ( leadTeamIsStronger && isMatchSnowballing && relativeScoreDifference > stompLimit && strengthDifference > stompLimit || leadTeamIsStronger && isMatchSnowballing && absoluteScoreDifference > stompLimit*120 && strengthDifference > stompLimit ){
+                        accumulatedStompImbalance += 1.0 + (absoluteScoreDifference.tofloat() / 120 )
+                        print("[BTB] Accumulating stomp imbalance/threshold: " + accumulatedStompImbalance + " / 16")
                     }
                     else{
-                        accumulatedStompImbalance = -1.5
+                        accumulatedStompImbalance -= 0.5
                         if (accumulatedStompImbalance < 0)
                             accumulatedStompImbalance = 0
                         else
-                            print("[BTB] accumulated stomp imbalance/threshold: " + accumulatedStompImbalance + " / 18")
+                            print("[BTB] Decaying stomp imbalance/threshold: " + accumulatedStompImbalance + " / 16")
                     }
 
                     // Activate forced rebalance when accrued enough value
-                    if (accumulatedStompImbalance > 18 && matchElapsed > 18){
+                    if (accumulatedStompImbalance > 16 && matchElapsed > 16){
                         print("[BTB] Match is very uneven, forcing rebalance")
                     #if FSCC_ENABLED
                         FSU_ChatBroadcast( "%EVery uneven match detected! %NTeams and scores have been automatically rebalanced.")
@@ -797,41 +716,34 @@ void function BTBThread(){
                         foreach( entity player in GetPlayerArray()){
                             NSSendAnnouncementMessageToPlayer( player, "TEAMS HAVE BEEN AUTO-REBALANCED!", "Detected a very uneven match! Scores have also been leveled.", <1,0,0>, 0, 1 )
                         }
-                        ExecuteStatsBalance( GetPlayersSortedBySkill() )
+                        ExecuteStatsBalance()
                         rebalancedHasOccurred = 1
                     }
                 }
             }
-
-            // Check for team strength imbalance
-            if ( activeLimit != 0 && subtleRebalancePermitted == 0){
-                if (matchElapsed > 14 && absoluteScoreDifference > 50 && GameTime_TimeLeftSeconds() > 300 && GetPlayerArray().len() > 5){
-
-                    // Accrue a value if above the treshold, decay when below
-                    if (  leadTeamIsStronger && relativeScoreDifference > activeLimit ||  leadTeamIsStronger && absoluteScoreDifference > activeLimit*130 || leadTeamIsStronger && strengthDifference > suggestionLimit )
-                        accumulatedActiveImbalance += 1.0 + (absoluteScoreDifference / 150 )
-                    else{
-                        accumulatedActiveImbalance -= 1.5
-                        if (accumulatedActiveImbalance < 0)
-                            accumulatedActiveImbalance = 0
+            else{
+                if (accumulatedSuggestionImbalance > 0){
+                    accumulatedSuggestionImbalance -= 0.5
+                    if (accumulatedSuggestionImbalance < 0){
+                        accumulatedSuggestionImbalance = 0
+                        suggestionTimer = 10.0
                     }
-
-                    // When enough value accrued, start checking if team strengths are wack
-                    if (accumulatedActiveImbalance > 16){
-                        print("[BTB] Teams are imbalanced, team strength difference is at: " + strengthDifference)
-
-                        if ( strengthDifference >= previousStrengthDifference ){
-                            activeFailCount += 2
-                            if ( activeFailCount > 5){
-                                subtleRebalancePermitted = 1
-                                activeFailCount = 0
-                                print("[BTB] Team balance is wack, attempting to remedy!")
-                            }
-                        }
-                        else if(activeFailCount > 0)
-                            activeFailCount -= 1
-                        previousStrengthDifference = strengthDifference
-                    }
+                    else
+                        print("[BTB] Decaying suggestion imbalance/threshold: " + accumulatedSuggestionImbalance + " / " + suggestionTimer)
+                }
+                if (accumulatedActiveImbalance > 0){
+                    accumulatedActiveImbalance -= 0.5
+                    if (accumulatedActiveImbalance < 0)
+                        accumulatedActiveImbalance = 0
+                    else
+                        print("[BTB] Decaying active imbalance/threshold: " + accumulatedActiveImbalance + " / 12")
+                }
+                if (accumulatedStompImbalance > 0){
+                    accumulatedStompImbalance -= 0.5
+                    if (accumulatedStompImbalance < 0)
+                        accumulatedStompImbalance = 0
+                    else
+                        print("[BTB] Decaying stomp imbalance/threshold: " + accumulatedStompImbalance + " / 16")
                 }
             }
         }
@@ -872,6 +784,7 @@ void function BTBThread(){
             }
         }
         matchElapsed += 1
+        wait 10
     }
 }
 

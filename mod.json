@@ -1,54 +1,74 @@
 {
    "Name": "MentalEdge.BetterTeamBalance",
-   "Description": "Team balancing and shuffling, done smortly",
+   "Description": "Team balancing and shuffling, done smortly.",
    "LoadPriority": 8,
    "RequiredOnClient": false,
-   "Version": "1.3.0",
+   "Version": "2.0.0",
+   "Dependencies": {
+      "FSCC_ENABLED": "Fifty.ServerChatCommands [FSCC]",
+      "FSA_ENABLED": "Fifty.ServerAdmin [FSA]"
+   },
 
    "ConVars": [
       {
          "Name": "btb_difference_max",
-         "DefaultValue": "1" // The allowed difference between teams, above which a player will be moved over. Set to zero to disable auto-balancing.
+         "DefaultValue": "1",
+         "HelpString": "The allowed difference between teams, above which a player will be moved over. Set to zero to disable auto-balancing."
       },
       {
          "Name": "btb_wait_time",
-         "DefaultValue": "4" // Duration to wait in multiples of ten seconds, for new players to join the deficient team before balancing by moving players over. Set to zero to autobalance immediately. The wait is halved by every additional player of difference between the teams.
+         "DefaultValue": "4",
+         "HelpString": "Duration to wait in multiples of ten seconds for new players to join the deficient team before balancing by moving players over. Set to zero to autobalance immediately. The wait is halved by every additional player of difference between the teams."
       },
       {
          "Name": "btb_suggestion_limit",
-         "DefaultValue": "1.5" // The relative score difference treshold, if the scores stay above this difference, a rebalance will eventually be suggested in chat. Set to zero to disable the suggestion message. This feature requires FSU.
+         "DefaultValue": "1.5",
+         "HelpString": "The relative score difference treshold, if the scores stay above this difference, a rebalance will eventually be suggested in chat. Set to zero to disable the suggestion message. This feature requires FSU."
       },
       {
          "Name": "btb_stomp_limit",
-         "DefaultValue": "2.1" // The relative score difference above which the teams will eventually be automatically balanced even without approval by vote. Provided the imbalance persists/grows over some time. Set to zero to disable forced rebalance.
+         "DefaultValue": "0.0",
+         "HelpString": "The relative score difference above which the teams will eventually be automatically balanced even without approval by vote. Provided the imbalance persists/grows over some time and the match seems to be snowballing. Set to zero to disable forced rebalance."
       },
       {
          "Name": "btb_active_limit",
-         "DefaultValue": "1.7" // Insidious/Active balance treshold. Above this score difference, the teams will be balanced by swapping two suitable players between them at a time. (A strong player to the losing side, a weak one to the winning side.) Set to zero to disable. Only occurs if there is an actual team strength difference, will not interfere with evenly matched teams even if one is winning.
+         "DefaultValue": "0.0",
+         "HelpString": "Insidious/Active balance treshold. Above this score difference, the teams will be balanced by swapping two suitable players between them at a time. (A strong player to the losing side, a weak one to the winning side.) Set to zero to disable. Only occurs if there is an actual team strength difference, will not interfere with evenly matched teams even if one is winning."
       },
       {
          "Name": "btb_vote_fraction",
-         "DefaultValue": "0.45" // Fraction of players needed to vote for a rebalance. This feature requires FSU.
+         "DefaultValue": "0.45",
+         "HelpString": "Fraction of players needed to vote for a rebalance. This feature requires FSU."
+      },
+      {
+         "Name": "btb_vote_duration",
+         "DefaultValue": "180",
+         "HelpString": "Duration of the vote to balance teams, in seconds."
       },
       {
          "Name": "btb_afk_threshold",
-         "DefaultValue": "5" // Number of players needed on the server for it to start kicking afk players, below this playercount, afk players will be ignored. Set to zero to disable AFK kicking.
+         "DefaultValue": "5",
+         "HelpString": "Number of players needed on the server for it to start kicking afk players, below this playercount, afk players will be ignored. Set to zero to disable AFK kicking."
       },
       {
          "Name": "btb_afk_time",
-         "DefaultValue": "70" // The amount of time in seconds a player can be afk before getting kicked. They will get a chat message warning at half of this.
+         "DefaultValue": "70",
+         "HelpString": "The amount of time in seconds a player can be afk before getting kicked. They will get a chat message and RUI pop-up warning at half of this."
       },
       {
-         "Name": "btb_skd_shuffle",
-         "DefaultValue": "1" // Set to one to enable Score*KD based team shuffle between matches.
+         "Name": "btb_shuffle",
+         "DefaultValue": "1",
+         "HelpString": "Set to one to enable a player strength based team shuffle between matches."
       },
       {
          "Name": "uid_list",
-         "DefaultValue": "" // Used to save player details between matches. Leave as is.
+         "DefaultValue": "",
+         "HelpString": "Used to save player details between matches. Leave as is."
       },
       {
          "Name": "rank_list",
-         "DefaultValue": "" // Used to save player details between matches. Leave as is.
+         "DefaultValue": "",
+         "HelpString": "Used to save player details between matches. Leave as is."
       }
    ],
 
