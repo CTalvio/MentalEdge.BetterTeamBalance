@@ -13,24 +13,23 @@ You can also run BTB without FSU, although this will disable teambalancing by vo
 
 ### Changelog
 
-#### 2.0.0
-
-- Significant changes under the hood!!
-    - Vastly reduced false positives
-    - Imbalance detection is no longer based solely on team scores
-    - Will now detect if the lead team is snowballing
-    - Will now detect if the losing team is strong enough to make a come-back
-- Improved player strength calculation
-    - New kill-/death-/objectiverate based strength calculation, improved accuracy with players who only play part of a match
-    - Takes into consideration scores in "objective" based modes (Frontier War, Hardpoint, Attrition)
-    - Self-calibrating average player strength value (used when a player is too new to have accurate stats)
-    - This also improves team strength calculation, better balancing when teams have mismatched playercounts
-- Will now readjust teams on the fly during the first 90 seconds of a match
-    - Triggers if players leave/join after initial pre-match teambuild in this time window
-    - This allows BTB to compensate if the teamcomp is thrown off right at the start
-    - Will keep changes to the minimum possible, and make them discreetly (while players are dead)
-    - Team comp does not get messed with further after the 90 second grace period
-
+#### 3.0.0
+- New feature: Parties and Nemeses
+    - Parties
+        - Invite other player to form a party
+        - If players are on opposite teams, teams will be minimally adjusted to unite the party
+        - Parties are kept together through any re-balancing, and across multiple matches
+        - Party members can see the locations of their fellow party members
+        - Party strength check, parties that would stomp are not allowed
+    - Nemesis
+        - Mark somone as your nemesis
+        - Nemeses are kept on opposite teams
+- Improved RUI and chat messages, informing players on the server about what BTB is doing
+- Added FFA fallback mode, AFK detection only mode
+- Objectiverate calculations added for Frontier War and Hardpoint
+- Match start re-adjustmet
+    - Default race period reduced to 60 seconds
+    - Added minimum improvement thresold, adjustments that only help a tiny bit wont be made (should reduce excessive team changes)
 
 ## Features
 
@@ -46,7 +45,19 @@ BTB will in that scenario pit the two less skilled players against the single mo
 
 There are also a range of other features that help ensure even teams in a game, with as little disruption as possible. With default settings, team composition is left alone for most of the match. Even with mismatched playercounts BTB will wait 40 seconds for a new player to join, before moving a player over from the other team.
 
-When the match gets close to ending, it will stop acting entirely, so as to not ruin anyone's game by moving them to the losing side at the last second. At the other end, for the first 90 seconds of a match, BTB will readjust the teams on the fly, but only if players disconnect or join in a way that causes the teams to become lopsided.
+When the match gets close to ending, it will stop acting entirely, so as to not ruin anyone's game by moving them to the losing side at the last second. At the other end, for the first 60 seconds of a match, BTB will readjust the teams on the fly, but only if players disconnect or join in a way that causes the teams to become lopsided.
+
+#### Parties and Nemeses
+
+- Parties
+    - Players can invite other player to form a party
+    - If players are on opposite teams, teams will be minimally adjusted to unite the party
+    - Parties are kept together through any re-balancing, and across multiple matches
+    - Party members can see the locations of their fellow party members
+    - Party strength check, parties that would stomp are not allowed
+- Nemesis
+    - Mark somone as your nemesis
+    - Nemeses are kept on opposite teams
 
 #### Team Shuffle
 
@@ -54,7 +65,7 @@ When the match gets close to ending, it will stop acting entirely, so as to not 
 - At the beginning of a match, this data is retrieved and used to inform the shuffle
 - The shuffle incorporates *some* randomness, so as to leave room for variation
 - Accounts for players leaving/joining between games, by waiting until the next match to actually build the teams
-- Will make on the fly changes during a 90 second grace period at the start, if any players leave/join, throwing teams off balance
+- Will make on the fly changes during a 60 second grace period at the start, if any players leave/join, throwing teams off balance
 - Objectiverates matter in Attrition, Frontier War and Amped Hardpoint
     - In other modes only kill- and deathrates are considered
 
@@ -98,6 +109,28 @@ When the match gets close to ending, it will stop acting entirely, so as to not 
 - UIDs set as admin in FSU are immune
 
 ### Changelogs for previous versions
+
+#### 2.0.1
+
+- Objectiverate calculation added for Titan Brawl and LTS
+
+#### 2.0.0
+
+- Significant changes under the hood!!
+    - Vastly reduced false positives
+    - Imbalance detection is no longer based solely on team scores
+    - Will now detect if the lead team is snowballing
+    - Will now detect if the losing team is strong enough to make a come-back
+- Improved player strength calculation
+    - New kill-/death-/objectiverate based strength calculation, improved accuracy with players who only play part of a match
+    - Takes into consideration scores in "objective" based modes (Frontier War, Hardpoint, Attrition)
+    - Self-calibrating average player strength value (used when a player is too new to have accurate stats)
+    - This also improves team strength calculation, better balancing when teams have mismatched playercounts
+- Will now readjust teams on the fly during the first 90 seconds of a match
+    - Triggers if players leave/join after initial pre-match teambuild in this time window
+    - This allows BTB to compensate if the teamcomp is thrown off right at the start
+    - Will keep changes to the minimum possible, and make them discreetly (while players are dead)
+    - Team comp does not get messed with further after the 90 second grace period
 
 #### 1.3.1-3
 
