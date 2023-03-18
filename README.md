@@ -13,23 +13,31 @@ You can also run BTB without FSU, although this will disable teambalancing by vo
 
 ### Changelog
 
+##### 3.0.1
+
+- Fix crash when running without FSU
+- AFK fallback improved (now does even less stuff that doesn't work in FFA)
+
 #### 3.0.0
+
 - New feature: Parties and Nemeses
     - Parties
-        - Invite other player to form a party
-        - If players are on opposite teams, teams will be minimally adjusted to unite the party
+        - Invite other players to form a party
+        - If someone is on the opposite team, teams will be minimally adjusted to bring them to the same team
         - Parties are kept together through any re-balancing, and across multiple matches
         - Party members can see the locations of their fellow party members
         - Party strength check, parties that would stomp are not allowed
     - Nemesis
-        - Mark somone as your nemesis
+        - Mark someone as your nemesis
         - Nemeses are kept on opposite teams
 - Improved RUI and chat messages, informing players on the server about what BTB is doing
-- Added FFA fallback mode, AFK detection only mode
+- Added FFA fallback mode, runs AFK detection only
 - Objectiverate calculations added for Frontier War and Hardpoint
 - Match start re-adjustmet
-    - Default race period reduced to 60 seconds
+    - Default grace period reduced to 60 seconds
     - Added minimum improvement thresold, adjustments that only help a tiny bit wont be made (should reduce excessive team changes)
+
+![](https://i.imgur.com/m8ybaWt.jpg)
 
 ## Features
 
@@ -50,13 +58,13 @@ When the match gets close to ending, it will stop acting entirely, so as to not 
 #### Parties and Nemeses
 
 - Parties
-    - Players can invite other player to form a party
-    - If players are on opposite teams, teams will be minimally adjusted to unite the party
-    - Parties are kept together through any re-balancing, and across multiple matches
+    - Players can invite other players to form a party
+    - If aynone is on opposite teams, teams will be minimally adjusted to unite the party
+    - Parties are kept together through any team balancing, and across multiple matches
     - Party members can see the locations of their fellow party members
     - Party strength check, parties that would stomp are not allowed
 - Nemesis
-    - Mark somone as your nemesis
+    - Mark someone as your nemesis
     - Nemeses are kept on opposite teams
 
 #### Team Shuffle

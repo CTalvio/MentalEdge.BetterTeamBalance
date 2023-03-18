@@ -31,7 +31,7 @@ int afkThresold = 5
 int afkTime = 70
 int shuffle = 1
 int grace = 9
-bool highlight = 1
+bool highlight = true
 
 int rebalancedHasOccurred = 0
 int waitedTime = 0
@@ -48,15 +48,26 @@ const SHUFFLE_RANDOMNESS = 0.075
 
 void function BTBInit(){
 
+    foreach (entity player in GetPlayerArray()){
+        AddPlayerCallbacks( player )
+    }
+
+    AddCallback_OnClientConnected( AddPlayerCallbacks )
+    AddCallback_OnClientDisconnected( DeletePlayerRecords )
+    AddCallback_OnClientDisconnected( DeletePlayTime )
+    AddCallback_OnPlayerRespawned( Moved )
+
+    if( IsFFAGame() ){
+        print("[BTB] RUNNING AN FFA GAMEMODE - ONLY AFK KICK ACTIVE")
+        BTBFallbackModeThread()
+        return
+    }
+
     foreach( player in GetPlayerArray() ){
         NSCreateStatusMessageOnPlayer( player, "BTB", "Waiting for players....", "btbstatus"  )
     }
 
     lastMatchStats["average"] <- 0.6666
-
-    foreach (entity player in GetPlayerArray()){
-        AddPlayerCallbacks( player )
-    }
 
     differenceMax = GetConVarInt( "btb_difference_max" )
     waitTime = GetConVarInt( "btb_wait_time" )
@@ -69,17 +80,6 @@ void function BTBInit(){
     shuffle = GetConVarInt( "btb_shuffle" )
     grace = GetConVarInt( "btb_grace_time" )
     highlight = GetConVarBool("btb_party_highlight")
-
-    AddCallback_OnClientConnected( AddPlayerCallbacks )
-    AddCallback_OnClientDisconnected( DeletePlayerRecords )
-    AddCallback_OnClientDisconnected( DeletePlayTime )
-    AddCallback_OnPlayerRespawned( Moved )
-
-    if( IsFFAGame() ){
-        print("[BTB] RUNNING AN FFA GAMEMODE - ONLY AFK KICK ACTIVE")
-        BTBFallbackModeThread()
-        return
-    }
 
 #if FSCC_ENABLED
     FSCC_CommandStruct command
@@ -109,6 +109,7 @@ void function BTBInit(){
     print("[BTB] FSU is installed! Running BTB with chat command features enabled.")
 
     AddCallback_OnClientDisconnected( LeaveCouplings )
+    AddCallback_OnPlayerRespawned( InformPlayer )
     if( highlight ){
         AddCallback_OnPilotBecomesTitan( RefreshPartyHighlight )
         AddCallback_OnTitanBecomesPilot( RefreshPartyHighlight )
@@ -121,7 +122,6 @@ void function BTBInit(){
     AddCallback_OnPlayerKilled( OnDeathBalance )
     AddCallback_OnClientConnected( AssignJoiningPlayer )
     AddCallback_OnClientConnected( AddRUI )
-    AddCallback_OnPlayerRespawned( InformPlayer )
     AddCallback_GameStateEnter( eGameState.Playing, Playing)
     AddCallback_GameStateEnter( eGameState.Prematch, Prematch)
     AddCallback_GameStateEnter( eGameState.Postmatch, Postmatch)
