@@ -3,7 +3,7 @@
 	"Description": "Team balancing and shuffling, done smortly.",
 	"LoadPriority": 8,
 	"RequiredOnClient": false,
-	"Version": "2.0.1",
+	"Version": "3.0.1",
 	"Dependencies": {
 		"FSCC_ENABLED": "Fifty.ServerChatCommands [FSCC]",
 		"FSA_ENABLED": "Fifty.ServerAdmin [FSA]"

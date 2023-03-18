@@ -2,6 +2,8 @@
 
 Yet another autobalance mod. Except this one is highly configurable, and aims to get the teamcomopositions right the first time by using stats from the previous match, so that no mid-match faffing about is needed. Or is at least kept to the smallest amount tolerable. Will for example make on-the-fly adjustments during a match start grace period if players leave/join and is able to automatically rebuild teams when a match is snowballing out of control. Even redistributes team scores when it does so. Tons of features, all with the overarching goal of improving team balancing, while being as un-annoying as possible, so that we might enjoy challenging and even matches more often. Full featurelist below.
 
+![](i.imgur.com/p6iEUx6.jpg)
+
 Relies on FSU for chat commands. If using FSU, you will want to disable its built-in auto balance and team shuffle features.
 
 Get FSU here: [Fifty's Server Utilities](https://northstar.thunderstore.io/package/Fifty/Server_Utilities/)
