@@ -3,10 +3,10 @@ global function BTBInit
 array <entity> playersWantingToBalance
 table <string, float> lastMatchStats
 table <string, int> timePlayed  // player uid, time they have played
-table <entity, entity> nemeses
-table <entity, entity> partyInvites // Invitee, inviter
-table <entity, array <entity> > parties // Party leader, array of members
-table <entity, int> partyStrenghtTimer
+table <string, string> nemeses
+table <string, string> partyInvites // Invitee, inviter
+table <string, array <string> > parties // Party leader, array of members
+table <string, int> partyStrenghtTimer
 array <entity> chosenNemesis // players who have chose a nemesis
 
 struct {
@@ -54,7 +54,6 @@ void function BTBInit(){
 
     AddCallback_OnClientConnected( AddPlayerCallbacks )
     AddCallback_OnClientDisconnected( DeletePlayerRecords )
-    AddCallback_OnClientDisconnected( DeletePlayTime )
     AddCallback_OnPlayerRespawned( Moved )
 
     if( IsFFAGame() ){
@@ -108,7 +107,7 @@ void function BTBInit(){
 
     print("[BTB] FSU is installed! Running BTB with chat command features enabled.")
 
-    AddCallback_OnClientDisconnected( LeaveCouplings )
+    AddCallback_OnClientDisconnected( RemoveCouplings )
     AddCallback_OnPlayerRespawned( InformPlayer )
     if( highlight ){
         AddCallback_OnPilotBecomesTitan( RefreshPartyHighlight )
@@ -122,6 +121,7 @@ void function BTBInit(){
     AddCallback_OnPlayerKilled( OnDeathBalance )
     AddCallback_OnClientConnected( AssignJoiningPlayer )
     AddCallback_OnClientConnected( AddRUI )
+    AddCallback_OnClientDisconnected( DeletePlayTime )
     AddCallback_GameStateEnter( eGameState.Playing, Playing)
     AddCallback_GameStateEnter( eGameState.Prematch, Prematch)
     AddCallback_GameStateEnter( eGameState.Postmatch, Postmatch)
@@ -166,11 +166,11 @@ void function Postmatch(){
     string partiesList = ""
     foreach( key, value in parties ){
         string party = ""
-        foreach( entity partyMember in value )
+        foreach( string partyMember in value )
             if (party == "")
-                party = partyMember.GetUID()
+                party = partyMember
             else
-                party += "-" + partyMember.GetUID()
+                party += "-" + partyMember
         if( partiesList == "" )
             partiesList = party
         else
@@ -180,9 +180,9 @@ void function Postmatch(){
     string nemesesList = ""
     foreach( key, value in nemeses )
         if (nemesesList == "")
-            nemesesList = key.GetUID()+"-"+value.GetUID()
+            nemesesList = key+"-"+value
         else
-            nemesesList += "," + key.GetUID()+"-"+value.GetUID()
+            nemesesList += "," + key+"-"+value
 
     SetConVarString( "party_list", partiesList )
     SetConVarString( "nemesis_list", nemesesList )
@@ -233,28 +233,31 @@ void function Prematch(){
         // Rebuild parties
         foreach( entity player in GetPlayerArray() ){
             foreach( string party in previusMatchParties){
-                if( split( party, "-")[0] == player.GetUID() ){
+                if( split( party, "-")[0] == player.GetPlayerName() ){
                     string members = ""
-                    parties[player] <- []
+                    parties[player.GetPlayerName()] <- []
                     foreach( partyMember in split( party, "-") )
                         foreach( p in GetPlayerArray() )
-                            if( p.GetUID() == partyMember ){
+                            if( p.GetPlayerName() == partyMember ){
                                 if( members == "" )
                                     members = p.GetPlayerName()
                                 else
                                     members += ", " + p.GetPlayerName()
-                                parties[player].append( p )
+                                parties[player.GetPlayerName()].append( p.GetPlayerName() )
                             }
-                    print( "[BTB] Staying party: " + members )
+                    if( parties[player.GetPlayerName()].len() > 1 )
+                        print( "[BTB] Staying party: " + members )
+                    else
+                        delete parties[player.GetPlayerName()]
                 }
             }
 
             // Rebuild nemeses
             foreach( string nemesisPair in previusMatchNemeses){
-                if( split( nemesisPair, "-")[0] == player.GetUID() ){
+                if( split( nemesisPair, "-")[0] == player.GetPlayerName() ){
                     foreach( p in GetPlayerArray() )
-                        if( p.GetUID() == split( nemesisPair, "-")[1] ){
-                            nemeses[player] <- p
+                        if( p.GetPlayerName() == split( nemesisPair, "-")[1] ){
+                            nemeses[player.GetPlayerName()] <- p.GetPlayerName()
                             print( "[BTB] Staying nemesis pair: " + player.GetPlayerName() + " and " + p.GetPlayerName() )
                         }
                 }
@@ -530,8 +533,23 @@ void function PlayerCountAutobalance( entity victim ){
 
 #if FSCC_ENABLED
 
+void function RemoveCouplings( entity player ){
+    string name = player.GetPlayerName()
+    if( IsPlayerInParty(name) )
+        DisbandLeaveParty( name )
+    RemoveNemesis( name )
+}
+
+entity function PlayerFromName( string playerName ){
+    foreach( player in GetPlayerArray() ){
+        if( playerName == player.GetPlayerName() )
+            return player
+    }
+    return null
+}
+
 void function RefreshPartyHighlight( entity player, entity titan ){
-    if( IsPlayerInParty(player) && highlight ){
+    if( IsPlayerInParty( player.GetPlayerName() ) && highlight ){
         Highlight_SetFriendlyHighlight( player, "hunted_friendly" )
         if ( player.GetPetTitan() != null )
             Highlight_SetFriendlyHighlight( player.GetPetTitan(), "hunted_friendly" )
@@ -539,10 +557,10 @@ void function RefreshPartyHighlight( entity player, entity titan ){
 }
 
 void function InformPlayer( entity player ){
-    if( IsPlayerInParty(player) && highlight )
+    if( IsPlayerInParty(player.GetPlayerName()) && highlight )
         Highlight_SetFriendlyHighlight( player, "hunted_friendly" )
 
-    if( RandomIntRange( 0, 6 ) == 0 || matchElapsed > 12 )
+    if( RandomIntRange( 0, 6 ) != 6 || matchElapsed > 12 )
         return
 
     if( GetConVarBool( "btb_nemesis" ) && GetConVarBool( "btb_party" ) )
@@ -554,14 +572,12 @@ void function InformPlayer( entity player ){
 }
 
 // Leave party and nemesis pair on disconnect
-void function LeaveCouplings( entity player ){
-    if( IsPlayerInParty( player ) )
-        DisbandLeaveParty( player )
-    if( GetNemesis( player ) != null )
-        if( player in nemeses )
-            delete nemeses[player]
+void function RemoveNemesis( string playerName ){
+    if( GetNemesis( playerName ) != "" )
+        if( playerName in nemeses )
+            delete nemeses[playerName]
         else
-            delete nemeses[GetNemesis( player )]
+            delete nemeses[GetNemesis(playerName)]
 }
 
 // Simulate assembling a full team in addition to party members, if not possible to create a balanced team, party is too strong
@@ -570,15 +586,15 @@ bool function IsPartyTooStrong( entity player, entity newMember = null ){
     int partySize = 2
     array <float> playerStrengths
     foreach( p in GetPlayerArray() )
-        if( !IsPlayerInParty( p ) && p != newMember && p != player )
+        if( !IsPlayerInParty( p.GetPlayerName() ) && p != newMember && p != player )
             playerStrengths.append( CalculatePlayerRank( p ) )
     playerStrengths.sort()
 
-    if( IsPlayerInParty( player ) ){
-        partySize = GetParty( player ).len()
+    if( IsPlayerInParty( player.GetPlayerName() ) ){
+        partySize = GetParty( player.GetPlayerName() ).len()
 
-        foreach( p in GetParty( player ) )
-            partyStrength += CalculatePlayerRank( p )
+        foreach( p in GetParty( player.GetPlayerName() ) )
+            partyStrength += CalculatePlayerRank( PlayerFromName(p) )
 
         if( newMember != null ){
             partyStrength += CalculatePlayerRank( newMember )
@@ -602,9 +618,13 @@ bool function IsSwapAllowed( entity player, entity opponentToSwap = null ){
     // When checking a swap between two players, make sure the other one is allowed to be swapped, too
     if( opponentToSwap != null && !IsSwapAllowed( opponentToSwap ) )
         return false
+    string playerName = player.GetPlayerName()
+    string opponentName
+    if( opponentToSwap != null )
+        opponentName = opponentToSwap.GetPlayerName()
 
-    if( IsPlayerInParty( player ) ){
-        entity partyLeader = GetParty( player )[0]
+    if( IsPlayerInParty( playerName ) ){
+        string leaderName = GetParty( playerName )[0]
         int playersTeam = player.GetTeam()
         int membersOnTeam = 0
         int membersOnOther = 0
@@ -612,11 +632,11 @@ bool function IsSwapAllowed( entity player, entity opponentToSwap = null ){
         int otherPartiesMembersOnOther = 0
 
         foreach( leader, memberArray in parties ){
-            if( leader == partyLeader ){
-                foreach( member in memberArray )
-                    if( member == opponentToSwap ){ // If the other player is a party member, then swap is pointless, and hence illegal
+            if( leader == leaderName ){
+                foreach( member in memberArray ){
+                    if( member == opponentName ) // If the other player is a party member, then swap is pointless, and hence illegal
                         return false
-                    if( member.GetTeam() == playersTeam )
+                    if( PlayerFromName(member).GetTeam() == playersTeam )
                         membersOnTeam++
                     else
                         membersOnOther++
@@ -624,7 +644,7 @@ bool function IsSwapAllowed( entity player, entity opponentToSwap = null ){
             }
             else{
                 foreach( member in memberArray ){
-                    if( member.GetTeam() == playersTeam )
+                    if( PlayerFromName(member).GetTeam() == playersTeam )
                         otherPartiesMembersOnTeam++
                     else
                         otherPartiesMembersOnOther++
@@ -633,52 +653,52 @@ bool function IsSwapAllowed( entity player, entity opponentToSwap = null ){
         }
 
         // If most party members are on the current team, then the swap is illegal, unless there is already too many members of another party
-        if( membersOnTeam - otherPartiesMembersOnTeam > membersOnOther - otherPartiesMembersOnOther)
+        if( membersOnTeam - otherPartiesMembersOnTeam > membersOnOther - otherPartiesMembersOnOther )
             return false
     }
 
     // Illegal if swapping either would put them with their nemesis (but legal if these two are each other's nemeses)
-    if( GetNemesis( player ) != null && GetNemesis( player ) != opponentToSwap || GetNemesis( opponentToSwap ) != null && GetNemesis( opponentToSwap ) != player )
+    if( GetNemesis( playerName ) != "" && GetNemesis( playerName ) != opponentName || GetNemesis( opponentName ) != "" && GetNemesis( opponentName ) != playerName )
         return false
     return true
 }
 
-bool function IsPlayerInParty( entity player ){
-    foreach( entity key, array <entity> value in parties )
-        foreach( entity partyMember in value )
-            if( partyMember == player )
+bool function IsPlayerInParty( string playerName ){
+    foreach( key, array <string> value in parties )
+        foreach( partyMember in value )
+            if( partyMember == playerName )
                 return true
     return false
 }
 
 // Return the party of a player as array
-array <entity> function GetParty( entity player ){
-    foreach( entity key, array <entity> value in parties )
-        foreach( entity partyMember in value )
-            if( partyMember == player )
+array <string> function GetParty( string playerName ){
+    foreach( key, array <string> value in parties )
+        foreach( string partyMember in value )
+            if( partyMember == playerName )
                 return parties[key]
     return []
 }
 
 // Returns the nemesis of a player, if they have one
-entity function GetNemesis( entity player ){
-    foreach( entity key, entity value in nemeses){
-        if( player == key)
+string function GetNemesis( string playerName ){
+    foreach( key, value in nemeses){
+        if( playerName == key)
             return value
-        if( player == value )
+        if( playerName == value )
             return key
     }
-    return null
+    return ""
 }
 
 void function DisplayPartyStatus( entity player ){
-    if( IsPlayerInParty( player ) ){
+    if( IsPlayerInParty( player.GetPlayerName() ) ){
         string members = ""
-        foreach( p in GetParty(player) )
+        foreach( memberName in GetParty( player.GetPlayerName() ) )
             if( members == "" )
-                members = p.GetPlayerName() + "'s party: %H" + p.GetPlayerName()
+                members = memberName + "'s party: %H" + memberName
             else
-                members += "%T, %H" + p.GetPlayerName()
+                members += "%T, %H" + memberName
         FSU_PrivateChatMessage(player, members)
         FSU_PrivateChatMessage(player, "Use %H%Pparty disband %Tto leave the party, or disband it, if you are the leader.")
         return
@@ -690,79 +710,88 @@ void function DisplayPartyStatus( entity player ){
     }
 }
 
-void function AddPlayerToParty( entity player, entity inviter ){
+void function AddPlayerToParty( string playerName, string inviterName ){
+    entity player = PlayerFromName( playerName )
+    entity inviter = PlayerFromName( inviterName )
+
     if( IsPartyTooStrong( inviter, player ) ){
-        FSU_PrivateChatMessage(inviter, "%H" + player.GetPlayerName() + " %Ewas unable to accept your invite, the resulting party would be too strong!")
+        FSU_PrivateChatMessage(inviter, "%H" + playerName + " %Ewas unable to accept your invite, the resulting party would be too strong!")
         FSU_PrivateChatMessage(inviter, "You can try again later, if the players on the server, or their stats, change.")
-        FSU_PrivateChatMessage(player, "%EFailed to accept party invite from %H" + inviter.GetPlayerName() + "%E, the resulting party would be too strong!" )
+        FSU_PrivateChatMessage(player, "%EFailed to accept party invite from %H" + inviterName + "%E, the resulting party would be too strong!" )
         FSU_PrivateChatMessage(player, "You can try again later, if the players on the server, or their stats, change.")
         return
     }
 
-    if( inviter in parties ){
-        foreach( p in parties[inviter] ){
-            FSU_PrivateChatMessage(p, "%H" + player.GetPlayerName() + "%T has joined the party!.")
-            NSSendLargeMessageToPlayer( p, "New Party Member!", player.GetPlayerName() + " has joined the party!", 8, "rui/callsigns/callsign_105_col")
+    if( inviterName in parties ){
+        foreach( memberName in parties[inviterName] ){
+            entity p = PlayerFromName( memberName )
+            FSU_PrivateChatMessage(p, "%H" + playerName + "%T has joined the party!.")
+            NSSendLargeMessageToPlayer( p, "New Party Member!", playerName + " has joined the party!", 8, "rui/callsigns/callsign_105_col")
             EmitSoundOnEntityOnlyToPlayer( p, p, "UI_CTF_3P_TeamGrabFlag" )
             DisplayPartyStatus( p )
 
         }
-        parties[inviter].append( player )
+        parties[inviterName].append( playerName )
     }
     else{
-        parties[inviter] <- [ inviter, player ]
-        NSSendLargeMessageToPlayer( inviter, "New Party Member!", player.GetPlayerName() + " has joined the party!", 8, "rui/callsigns/callsign_105_col")
+        parties[inviterName] <- [ inviterName, playerName ]
+        NSSendLargeMessageToPlayer( inviter, "New Party Member!", playerName + " has joined the party!", 8, "rui/callsigns/callsign_105_col")
         EmitSoundOnEntityOnlyToPlayer( inviter, inviter, "UI_CTF_3P_TeamGrabFlag" )
         if( highlight )
             Highlight_SetFriendlyHighlight( inviter, "hunted_friendly" )
     }
 
     // Undo nemeses
-    if( GetNemesis( player ) == inviter )
-        if( player in nemeses )
-            delete nemeses[player]
+    if( GetNemesis( playerName ) == inviterName )
+        if( playerName in nemeses )
+            delete nemeses[playerName]
         else
-            delete nemeses[GetNemesis( player )]
+            delete nemeses[GetNemesis( playerName )]
 
-    NSSendLargeMessageToPlayer( player, "You Joined the Party!", "You accepted " + inviter.GetPlayerName() + "'s invitation to their party!", 8, "rui/callsigns/callsign_105_col")
+    NSSendLargeMessageToPlayer( player, "You Joined the Party!", "You accepted " + inviterName + "'s invitation to their party!", 8, "rui/callsigns/callsign_105_col")
     EmitSoundOnEntityOnlyToPlayer( player, player, "UI_CTF_3P_TeamGrabFlag" )
 
-    FSU_PrivateChatMessage( player, "%SYou have accepted the party invite from %H" + inviter.GetPlayerName() + "%S!" )
+    FSU_PrivateChatMessage( player, "%SYou have accepted the party invite from %H" + inviterName + "%S!" )
     DisplayPartyStatus( player )
-    FSU_PrivateChatMessage( inviter, "%H" + player.GetPlayerName() + " %Shas accepted your party invite!" )
+    FSU_PrivateChatMessage( inviter, "%H" + playerName + " %Shas accepted your party invite!" )
     if( highlight )
         Highlight_SetFriendlyHighlight( player, "hunted_friendly" )
-    delete partyInvites[player]
+    delete partyInvites[playerName]
     UniteParties()
 
-    print( "[BTB] " + player.GetPlayerName() + " has joined " + inviter.GetPlayerName() + "'s party" )
+    print( "[BTB] " + playerName + " has joined " + inviterName + "'s party" )
 }
 
-void function DisbandLeaveParty( entity player ){
-    if( player in parties || parties[player].len() == 2 ){
-        foreach( p in parties[player] ){
-            FSU_PrivateChatMessage(p, "%H" + player.GetPlayerName() + "'s %Eparty, which you were in, has been disbanded!")
-            NSSendLargeMessageToPlayer( p, "Party Disbanded!", player.GetPlayerName() + "'s party, which you were in, has been disbanded!", 8, "rui/callsigns/callsign_34_col")
+void function DisbandLeaveParty( string playerName ){
+    if( playerName in parties || GetParty( playerName ).len() == 2 ){
+        foreach( name in GetParty( playerName ) ){
+            entity p = PlayerFromName( name )
+            if( p == null )
+                continue
+            FSU_PrivateChatMessage( p, "%H" + playerName + "'s %Eparty, which you were in, has been disbanded!")
+            NSSendLargeMessageToPlayer( p, "Party Disbanded!", playerName + "'s party, which you were in, has been disbanded!", 8, "rui/callsigns/callsign_34_col")
             EmitSoundOnEntityOnlyToPlayer( p, p, "UI_CTF_3P_EnemyGrabFlag" )
             if( highlight )
                 Highlight_ClearFriendlyHighlight( p )
         }
-        delete parties[player]
+        delete parties[playerName]
 
-        print( "[BTB] " + player.GetPlayerName() + "'s party disbanded" )
+        print( "[BTB] " + playerName + "'s party disbanded" )
         return
     }
     else{
-        print( "[BTB] " + player.GetPlayerName() + " left " + GetParty( player )[0].GetPlayerName() + "'s party" )
-        foreach( p in GetParty( player ) ){
-            if( p != player ){
-                FSU_PrivateChatMessage( p, "%H" + player.GetPlayerName() + "%E has left the party!")
-                NSSendLargeMessageToPlayer( p, "Party Member Left!", player.GetPlayerName() + " has left the party!", 8, "rui/callsigns/callsign_34_col")
+        print( "[BTB] " + playerName + " left " + GetParty( playerName )[0] + "'s party" )
+        foreach( name in GetParty( playerName ) ){
+            entity p = PlayerFromName( name )
+            entity player = PlayerFromName( playerName )
+            if( p != player && p != null ){
+                FSU_PrivateChatMessage( p, "%H" + playerName + "%E has left the party!")
+                NSSendLargeMessageToPlayer( p, "Party Member Left!", playerName + " has left the party!", 8, "rui/callsigns/callsign_34_col")
                 EmitSoundOnEntityOnlyToPlayer( p, p, "UI_CTF_3P_EnemyGrabFlag" )
             }
-            else if( p == player && GetParty( player ).find( player ) > -1){
-                FSU_PrivateChatMessage(player, "%SYou left " + GetParty( player )[0].GetPlayerName() + "'s party!")
-                GetParty( player ).remove( GetParty( player ).find( player ) )
+            else if( p != null && p == player && GetParty( playerName ).find( playerName ) > -1){
+                FSU_PrivateChatMessage(player, "%SYou left " + GetParty( playerName )[0] + "'s party!")
+                GetParty( playerName ).remove( GetParty( playerName ).find( playerName ) )
                 if( highlight )
                     Highlight_ClearFriendlyHighlight( p )
             }
@@ -773,61 +802,53 @@ void function DisbandLeaveParty( entity player ){
 
 // Unite parties in the most efficient way possible
 void function UniteParties(){
-    foreach( entity key, array <entity> value in parties ){
-        foreach( entity partyMember in value ){
-            if( key.GetTeam() == partyMember.GetTeam() )
+    foreach( string leaderName, array <string> value in parties ){
+        entity leader = PlayerFromName( leaderName )
+        foreach( string partyMemberName in value ){
+            entity partyMember = PlayerFromName( partyMemberName )
+            if( partyMember == null || leader.GetTeam() == partyMember.GetTeam() )
                 continue
-            if( key.GetTeam() != partyMember.GetTeam() && 0 != abs(GetPlayerArrayOfTeam(TEAM_IMC).len()-GetPlayerArrayOfTeam(TEAM_MILITIA).len()) ){
-                if( GetPlayerArrayOfTeam(key.GetTeam()).len() > GetPlayerArrayOfTeam(partyMember.GetTeam()).len() ){
-                    SetTeam( key, partyMember.GetTeam() )
-                #if FSCC_ENABLED
-                    FSU_PrivateChatMessage( key, "%FYour team has been switched to unite you with your party!")
-                #else
-                    Chat_ServerPrivateMessage( key, "Your team has been switched to unite you with your party!", false)
-                #endif
-                    NSSendPopUpMessageToPlayer( key, "Your team has been switched!" )
+            if( leader.GetTeam() != partyMember.GetTeam() && 0 != abs(GetPlayerArrayOfTeam(TEAM_IMC).len()-GetPlayerArrayOfTeam(TEAM_MILITIA).len()) ){
+                if( GetPlayerArrayOfTeam(leader.GetTeam()).len() > GetPlayerArrayOfTeam(partyMember.GetTeam()).len() ){
+                    SetTeam( leader, partyMember.GetTeam() )
+                    FSU_PrivateChatMessage( leader, "%FYour team has been switched to unite you with your party!")
+                    NSSendPopUpMessageToPlayer( leader, "Your team has been switched!" )
                 }
                 else{
-                    SetTeam( partyMember, key.GetTeam() )
-                #if FSCC_ENABLED
+                    SetTeam( partyMember, leader.GetTeam() )
                     FSU_PrivateChatMessage( partyMember, "%FYour team has been switched to unite you with your party!")
-                #else
-                    Chat_ServerPrivateMessage( partyMember, "Your team has been switched to unite you with your party!", false)
-                #endif
                     NSSendPopUpMessageToPlayer( partyMember, "Your team has been switched!" )
                 }
             }
-            if( key.GetTeam() != partyMember.GetTeam() )
-                ExecuteBestPossibleSwap( key, false, "party" )
-            if( key.GetTeam() != partyMember.GetTeam() )
+            if( leader.GetTeam() != partyMember.GetTeam() )
+                ExecuteBestPossibleSwap( leader, false, "party" )
+            if( leader.GetTeam() != partyMember.GetTeam() )
                 ExecuteBestPossibleSwap( partyMember, false, "party" )
-            if( key.GetTeam() != partyMember.GetTeam() && fabs(CalculatePlayerRank(key)-lastMatchStats["average"]) < fabs(CalculatePlayerRank(partyMember)-lastMatchStats["average"]) )
-                ExecuteBestPossibleSwap( key, true, "party" )
-            else if( key.GetTeam() != partyMember.GetTeam() )
+            if( leader.GetTeam() != partyMember.GetTeam() && fabs(CalculatePlayerRank(leader)-lastMatchStats["average"]) < fabs(CalculatePlayerRank(partyMember)-lastMatchStats["average"]) )
+                ExecuteBestPossibleSwap( leader, true, "party" )
+            else if( leader.GetTeam() != partyMember.GetTeam() )
                 ExecuteBestPossibleSwap( partyMember, true, "party" )
-            if( key.GetTeam() != partyMember.GetTeam() )
-                ExecuteBestPossibleSwap( key, true, "party" )
-            if( key.GetTeam() != partyMember.GetTeam() )
+            if( leader.GetTeam() != partyMember.GetTeam() )
+                ExecuteBestPossibleSwap( leader, true, "party" )
+            if( leader.GetTeam() != partyMember.GetTeam() )
                 ExecuteBestPossibleSwap( partyMember, true, "party" )
-            if( key.GetTeam() != partyMember.GetTeam() )
-                print("[BTB] Uh Oh, UnitePartie ran, but failed to unite all party members")
+            if( leader.GetTeam() != partyMember.GetTeam() )
+                print("[BTB] Uh Oh, UniteParties ran, but failed to unite all party members")
         }
     }
 }
 
 // Split nemeses in the most efficient way possible
 void function SplitNemeses(){
-    foreach( entity key, entity value in nemeses ){
-        if( key.GetTeam() != value.GetTeam() )
-            break
+    foreach( string n1, string n2 in nemeses ){
+        entity key = PlayerFromName( n1 )
+        entity value = PlayerFromName( n2 )
+        if( key == null || value == null || key.GetTeam() != value.GetTeam() )
+            continue
         if( key.GetTeam() == value.GetTeam() && 0 != abs(GetPlayerArrayOfTeam(TEAM_IMC).len()-GetPlayerArrayOfTeam(TEAM_MILITIA).len()) ){
             if( GetPlayerArrayOfTeam(key.GetTeam()).len() > GetPlayerArrayOfTeam(GetOtherTeam(key.GetTeam())).len() ){
                 SetTeam( key, GetOtherTeam(key.GetTeam()) )
-            #if FSCC_ENABLED
                 FSU_PrivateChatMessage( key, "%FYour team has been switched to pit you against your nemesis!")
-            #else
-                Chat_ServerPrivateMessage( key, "Your team has been switched to pit you against your nemesis!", false)
-            #endif
                 NSSendPopUpMessageToPlayer( key, "Your team has been switched!" )
             }
         }
@@ -858,8 +879,8 @@ void function BTB_Party ( entity player, array < string > args ){
 
 	// Accept party invite
 	if( args[0] == "accept" || args[0] == "yes" || args[0] == "y" || args[0] == "join" ){
-        if( player in partyInvites ){
-            AddPlayerToParty( player, partyInvites[player] )
+        if( player.GetPlayerName() in partyInvites ){
+            AddPlayerToParty( player.GetPlayerName(), partyInvites[player.GetPlayerName()] )
             return
         }
         else{
@@ -870,8 +891,8 @@ void function BTB_Party ( entity player, array < string > args ){
 
     //Disband or leave a party
     if( args[0] == "disband" || args[0] == "leave" || args[0] == "exit" || args[0] == "reset" ){
-        if( IsPlayerInParty( player ) ){
-            DisbandLeaveParty( player )
+        if( IsPlayerInParty( player.GetPlayerName() ) ){
+            DisbandLeaveParty( player.GetPlayerName() )
             return
         }
         else{
@@ -906,27 +927,27 @@ void function BTB_Party ( entity player, array < string > args ){
             return
         }
         // Check if player is allowed to invite party members
-        if( IsPlayerInParty( player ) && !( player in parties ) ){
+        if( IsPlayerInParty( player.GetPlayerName() ) && !( player.GetPlayerName() in parties ) ){
             FSU_PrivateChatMessage(player, "%EYou cannot send invites! %TYou are not the party leader.")
             return
         }
         // Check if target is already in party
-        if( IsPlayerInParty( target ) ){
+        if( IsPlayerInParty( target.GetPlayerName() ) ){
             FSU_PrivateChatMessage( player, "%H" + target.GetPlayerName() + "%E is already in a party!" )
             return
         }
         // Check if the resulting party would bee too strong
         if( IsPartyTooStrong( player, target ) ){
             FSU_PrivateChatMessage( player, "%EParty invite failed, the resulting party would be too strong!" )
-            FSU_PrivateChatMessage(player, "You can try again later, if the players on the server, or their stats, change.")
+            FSU_PrivateChatMessage( player, "You can try again later, if the players on the server, or their stats, change.")
             return
         }
         // Send invite, make friends, profit :D
-        if( target in partyInvites ){
-            partyInvites[target] = player
+        if( target.GetPlayerName() in partyInvites ){
+            partyInvites[target.GetPlayerName()] = player.GetPlayerName()
         }
         else{
-            partyInvites[target] <- player
+            partyInvites[target.GetPlayerName()] <- player.GetPlayerName()
         }
         FSU_PrivateChatMessage( player, "%H" + target.GetPlayerName() + "%S has been sent a party invite!" )
         FSU_PrivateChatMessage( target, "%H" + player.GetPlayerName() + "%T has invited you to party up! Use %H%Pparty accept %T to join their party." )
@@ -938,16 +959,16 @@ void function BTB_Party ( entity player, array < string > args ){
 // Set someone as your nemesis
 void function BTB_Enemy ( entity player, array < string > args ){
     if(args.len() == 0){
-        if( GetNemesis( player ) != null )
-            FSU_PrivateChatMessage( player, "%E" + GetNemesis( player ).GetPlayerName() + "%T is your current nemesis!" )
+        if( GetNemesis( player.GetPlayerName() ) != "" )
+            FSU_PrivateChatMessage( player, "%E" + GetNemesis( player.GetPlayerName() ) + "%T is your current nemesis!" )
         else
             FSU_PrivateChatMessage( player, "%EYou do not have a nemesis." )
         return
     }
     if(args[0] == "peace" || args[0] == "cancel" || args[0] == "none" ){
-        if( player in nemeses ){
-            FSU_PrivateChatMessage( player, "%H" + nemeses[player].GetPlayerName() + "%S is no longer your nemesis!" )
-            delete nemeses[player]
+        if( player.GetPlayerName() in nemeses ){
+            FSU_PrivateChatMessage( player, "%H" + nemeses[player.GetPlayerName()] + "%S is no longer your nemesis!" )
+            delete nemeses[player.GetPlayerName()]
             return
         }
     }
@@ -984,21 +1005,21 @@ void function BTB_Enemy ( entity player, array < string > args ){
             }
 
         // Make sure player isnt trying to make a party member their nemesis
-        if( IsPlayerInParty( player ) )
-            foreach( p in GetParty( player ) )
-                if( p == target ){
+        if( IsPlayerInParty( player.GetPlayerName() ) )
+            foreach( name in GetParty( player.GetPlayerName() ) )
+                if( PlayerFromName( name ) == target ){
                     FSU_PrivateChatMessage( player, "%EA member of your party cannot be your nemesis." )
                     return
                 }
 
         // Make nemeses
-        if( player in nemeses ){
+        if( player.GetPlayerName() in nemeses ){
             FSU_PrivateChatMessage( player, "%EYou already had a nemesis! %H" + target.GetPlayerName() + "%S is now your nemesis instead!" )
             FSU_PrivateChatMessage( player, "%TYou can only choose one nemesis at a time." )
-            nemeses[player] = target
+            nemeses[player.GetPlayerName()] = target.GetPlayerName()
         }
         else{
-            nemeses[player] <- target
+            nemeses[player.GetPlayerName()] <- target.GetPlayerName()
             FSU_PrivateChatMessage( player, "%E" + target.GetPlayerName() + "%S is now your nemesis!" )
         }
         FSU_PrivateChatMessage( target, "%H" + player.GetPlayerName() + "%E has made you their nemesis!" )
@@ -1237,10 +1258,10 @@ void function BTBThread(){
 
 #if FSCC_ENABLED
     foreach( player in GetPlayerArray() ){
-        if( IsPlayerInParty( player ) )
+        if( IsPlayerInParty( player.GetPlayerName() ) )
             DisplayPartyStatus( player )
-        if( GetNemesis( player ) != null )
-            FSU_PrivateChatMessage( player, "You have a nemesis: %E" + GetNemesis( player ).GetPlayerName() )
+        if( GetNemesis( player.GetPlayerName() ) != "" )
+            FSU_PrivateChatMessage( player, "You have a nemesis: %E" + GetNemesis( player.GetPlayerName() ) )
     }
 #endif
 
@@ -1325,17 +1346,17 @@ void function BTBThread(){
             #if FSCC_ENABLED
                 // Strength check parties, and auto-disband them if needed
                 foreach( leader, memberArray in parties ){
-                    if( IsPartyTooStrong( leader ) ){
+                    if( IsPartyTooStrong( PlayerFromName( leader ) ) ){
                         if( leader in partyStrenghtTimer )
                             partyStrenghtTimer[leader] += 1
                         else
                             partyStrenghtTimer[leader] <- 1
                         if( partyStrenghtTimer[leader] == 12 )
                             foreach( member in memberArray )
-                                FSU_PrivateChatMessage( member, "%ETHIS PARTY IS TOO STRONG, AND IS RISKING AUTOMATIC DISBAND" )
+                                FSU_PrivateChatMessage( PlayerFromName( member ), "%ETHIS PARTY IS TOO STRONG, AND IS RISKING AUTOMATIC DISBAND" )
                         if( partyStrenghtTimer[leader] > 30 ){
                             foreach( member in memberArray )
-                                FSU_PrivateChatMessage( member, "%ETHIS PARTY IS TOO STRONG, AND HAS BEEN AUTO-DIBANDED" )
+                                FSU_PrivateChatMessage( PlayerFromName( member ), "%EYOUR PARTY IS TOO STRONG, AND HAS BEEN AUTO-DIBANDED" )
                             DisbandLeaveParty( leader )
                         }
                     }

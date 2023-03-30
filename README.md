@@ -1,6 +1,6 @@
 # Better Team Balance
 
-Yet another autobalance mod. Except this one is highly configurable, and aims to get the teamcomopositions right the first time by using stats from the previous match, so that no mid-match faffing about is needed. Or is at least kept to the smallest amount tolerable. Will for example make on-the-fly adjustments during a match start grace period if players leave/join and is able to automatically rebuild teams when a match is snowballing out of control. Even redistributes team scores when it does so. Tons of features, all with the overarching goal of improving team balancing, while being as un-annoying as possible, so that we might enjoy challenging and even matches more often. Full featurelist below.
+Yet another autobalance mod. Highly configurable, aims to get the teamcompositions right the first time by using stats from the previous match, so that no mid-match faffing about is needed. Or is at least kept to the smallest amount tolerable. Tons of features, all with the overarching goal of improving team balancing, while being as un-annoying as possible, so that we might enjoy challenging and even matches more often. Full featurelist below.
 
 ![](https://i.imgur.com/p6iEUx6.jpg)
 
@@ -8,12 +8,31 @@ Relies on FSU for chat commands. If using FSU, you will want to disable its buil
 
 Get FSU here: [Fifty's Server Utilities](https://northstar.thunderstore.io/package/Fifty/Server_Utilities/)
 
-You can also run BTB without FSU, although this will disable teambalancing by vote. All automatic features will work.
+You can also run BTB without FSU, although this will disable teambalancing by vote, parties, and nemeses. All automatic features will work.
 
-## Check mod.json for all convars and config options!
 ### The more powerful (and hence disruptive) team balancing features are disabled by default!
+### By default, this is what BTB will do:
+
+- Allow players to form parties and choose a nemesis
+- Kick any players that are AFK for 70 seconds
+- Shuffle teams between rounds, using previous match data to keep them balanced
+    - Then, teams are adjusted further if needed (someone left/joined), and locked after 60 seconds
+- Place any joining player on the team that needs more help
+- Auto-level the player count between teams, but only after waiting 40 seconds for new joins
+- Allow rebalance by vote (and suggest it when relevant)
+- Will not automatically rebalance teams (can be enabled)
+- Will not level team-strength by subtly swapping the teams of players (insidious mode, can be enabled)
+
+If this sounds good to you, you can install BTB on your server with zero configuration. The default config is intended to do the basics of what anyone would need, prioritizing not annoying anyone playing on the server. If you would like to enable/disable or tweak the behaviour of BTB, check mod.json
+
+![](https://i.imgur.com/d40b3Zk.png)
 
 ### Changelog
+
+##### 3.0.2
+
+- Fix occasional server crash on player disconnect
+- Fix party/nemesis info tip displaying almost every spawn
 
 ##### 3.0.1
 
@@ -53,15 +72,11 @@ For example, in a game with three players, the best player would go to team one,
 
 BTB will in that scenario pit the two less skilled players against the single more skilled one. With BTB, highly skilled players and even to an extent cheaters will find themselves fighting against even odds.
 
-There are also a range of other features that help ensure even teams in a game, with as little disruption as possible. With default settings, team composition is left alone for most of the match. Even with mismatched playercounts BTB will wait 40 seconds for a new player to join, before moving a player over from the other team.
-
-When the match gets close to ending, it will stop acting entirely, so as to not ruin anyone's game by moving them to the losing side at the last second. At the other end, for the first 60 seconds of a match, BTB will readjust the teams on the fly, but only if players disconnect or join in a way that causes the teams to become lopsided.
-
 #### Parties and Nemeses
 
 - Parties
     - Players can invite other players to form a party
-    - If aynone is on opposite teams, teams will be minimally adjusted to unite the party
+    - If anyone is on opposite teams, teams will be minimally adjusted to unite the party
     - Parties are kept together through any team balancing, and across multiple matches
     - Party members can see the locations of their fellow party members
     - Party strength check, parties that would stomp are not allowed
@@ -76,7 +91,7 @@ When the match gets close to ending, it will stop acting entirely, so as to not 
 - The shuffle incorporates *some* randomness, so as to leave room for variation
 - Accounts for players leaving/joining between games, by waiting until the next match to actually build the teams
 - Will make on the fly changes during a 60 second grace period at the start, if any players leave/join, throwing teams off balance
-- Objectiverates matter in Attrition, Frontier War and Amped Hardpoint
+- Objectiverates are used in Attrition, Frontier War, LTS, TB, and Amped Hardpoint
     - In other modes only kill- and deathrates are considered
 
 #### Mid-Match Rebalance
