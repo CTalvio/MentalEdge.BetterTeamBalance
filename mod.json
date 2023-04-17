@@ -11,9 +11,19 @@
 
 	"ConVars": [
 		{
+			"Name": "btb_tone",
+			"DefaultValue": "1",
+			"HelpString": "Whether BTB should use the tone API to get player stats so it can have an idea of how good someone is right off the bat."
+		},
+		{
+			"Name": "btb_tone_url",
+			"DefaultValue": "https://tone.sleepycat.date",
+			"HelpString": "URL of tone API to use."
+		},
+		{
 			"Name": "btb_party",
 			"DefaultValue": "1",
-			"HelpString": "Enable player formed parties."
+			"HelpString": "Enable player formed parties. This feature requires FSU."
 		},
 		{
 			"Name": "btb_party_highlight",
@@ -23,12 +33,12 @@
 		{
 			"Name": "btb_nemesis",
 			"DefaultValue": "1",
-			"HelpString": "Enable player selected nemeses."
+			"HelpString": "Enable player selected nemeses. This feature requires FSU."
 		},
 		{
 			"Name": "btb_difference_max",
 			"DefaultValue": "1",
-			"HelpString": "The allowed difference between teams, above which a player will be moved over. Set to zero to disable auto-balancing."
+			"HelpString": "The allowed difference between teams, above which a player will be moved over. Set to zero to disable team size auto-balancing."
 		},
 		{
 			"Name": "btb_wait_time",
@@ -38,12 +48,12 @@
 		{
 			"Name": "btb_shuffle",
 			"DefaultValue": "1",
-			"HelpString": "Set to one to enable a player strength based team shuffle between matches."
+			"HelpString": "Set to one to enable the player strength based team shuffle between matches."
 		},
 		{
 			"Name": "btb_grace_time",
 			"DefaultValue": "6",
-			"HelpString": "Duration in multiples of 10 seconds. Length of the grace period at the start of a match where on-the-fly team changes are allowed, if teamcomp changes due to leaving/joining players occur after teambuild."
+			"HelpString": "Duration in multiples of 10 seconds. Length of the grace period at the start of a match where further on-the-fly team changes are still allowed, if teamcomp changes due to leaving/joining players after initial teambuild."
 		},
 		{
 			"Name": "btb_suggestion_limit",
@@ -68,11 +78,11 @@
 		{
 			"Name": "btb_vote_duration",
 			"DefaultValue": "180",
-			"HelpString": "Duration of the vote to balance teams, in seconds."
+			"HelpString": "Duration of the vote to balance teams, in seconds. This feature requires FSU."
 		},
 		{
 			"Name": "btb_afk_threshold",
-			"DefaultValue": "5",
+			"DefaultValue": "6",
 			"HelpString": "Number of players needed on the server for it to start kicking afk players, below this playercount, afk players will be ignored. Set to zero to disable AFK kicking."
 		},
 		{
@@ -108,6 +118,13 @@
 			"RunOn": "( SERVER ) && MP",
 			"ServerCallback": {
 				"After": "BTBInit"
+			}
+		},
+		{
+			"Path": "tonefetcher.nut",
+			"RunOn": "( SERVER ) && MP",
+			"ServerCallback": {
+				"After": "BTBToneInit"
 			}
 		}
 	]

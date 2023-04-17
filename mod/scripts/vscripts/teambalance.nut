@@ -8,10 +8,7 @@ table <string, string> partyInvites // Invitee, inviter
 table <string, array <string> > parties // Party leader, array of members
 table <string, int> partyStrenghtTimer
 array <entity> chosenNemesis // players who have chose a nemesis
-
-struct {
-	table <entity, float> lastmoved = {}
-} file
+table <entity, float> lastmoved
 
 enum eAntiAfkPlayerState {
     ACTIVE
@@ -119,8 +116,8 @@ void function BTBInit(){
 #endif
 
     AddCallback_OnPlayerKilled( OnDeathBalance )
-    AddCallback_OnClientConnected( AssignJoiningPlayer )
-    AddCallback_OnClientConnected( AddRUI )
+    AddCallback_OnClientConnecting( HandleJoiningPlayer )
+    AddCallback_OnClientConnected( HandleJoinedPlayer )
     AddCallback_OnClientDisconnected( DeletePlayTime )
     AddCallback_GameStateEnter( eGameState.Playing, Playing)
     AddCallback_GameStateEnter( eGameState.Prematch, Prematch)
@@ -225,7 +222,13 @@ void function Prematch(){
         // Add any new players who joined
         foreach( entity player in GetPlayerArray() ){
             if ( previusMatchUID.find( player.GetUID() ) == -1 ){
-                print("[BTB] Joining player: " + player.GetPlayerName() )
+                float toneKD = BTBGetToneKD(player)
+                if( toneKD == 0.0 )
+                    print("[BTB] Joining player: " + player.GetPlayerName() )
+                else{
+                    lastMatchStats[player.GetUID()] <- toneKD * lastMatchStats["average"]
+                    print("[BTB] Joining player: " + player.GetPlayerName() + " / " + lastMatchStats[player.GetUID()] + " (ToneAPI estimate)" )
+                }
             }
         }
 
@@ -274,6 +277,11 @@ void function Prematch(){
     teamsBuilt = 1
 }
 
+// void function GetKDFromToneAPI( entity player ){
+//     https://tone.sleepycat.date/v1/client/players/{playerId}
+//     NSHttpRequest(request, responseCapture, onFailure)
+// }
+
 // Check if the match is close to ending
 bool function IsMatchEnding(){
     int scoreLimit = ( GameMode_GetScoreLimit( "aitdm" )*0.8 ).tointeger()
@@ -292,7 +300,7 @@ bool function IsMatchEnding(){
 float function CalculatePlayerRank( entity player ){
 
     // If match is still starting, use korates from previous match if available
-    if( matchElapsed < grace / 2 ){
+    if( matchElapsed < grace ){
         if (player.GetUID() in lastMatchStats)
             return lastMatchStats[player.GetUID()]
         else
@@ -335,9 +343,20 @@ float function CalculatePlayerRank( entity player ){
     else
         deathrate = ( deaths / time ) / 2
 
-    // Check if this player was in the last match, and integrate their previous korate if they were
-    if( !IsMatchEnding() && player.GetUID() in lastMatchStats )
-        return ((korate - deathrate) + ((lastMatchStats[player.GetUID()])/2) ) / 1.5
+    if( !(player.GetUID() in timePlayed) )
+        timePlayed[player.GetUID()] <- 1
+    // Consider previous match or ToneAPI stats depending on how long player has been playing
+    float weight = timePlayed[player.GetUID()].tofloat() / 30
+    if( weight < 1.0 && player.GetUID() in lastMatchStats ){
+        float rankValue = korate - deathrate
+        float oldValue
+        if (player.GetUID() in lastMatchStats)
+            oldValue = lastMatchStats[player.GetUID()]
+        else
+            oldValue = lastMatchStats["average"]
+
+        return (rankValue * weight ) + ( oldValue * ( 1.0 - weight ) )
+    }
 
     return korate - deathrate
 }
@@ -422,7 +441,7 @@ void function ExecuteBestPossibleSwap( entity teamMember, bool forced = false, s
 }
 
 // Place a joining player onto the team most in need of bolstering
-void function AssignJoiningPlayer( entity player ){
+void function HandleJoiningPlayer( entity player ){
     if (!IsFFAGame()){
         float playerTeamFactor = CalculateTeamStrength(player.GetTeam())
         float otherTeamFactor = CalculateTeamStrength(GetOtherTeam(player.GetTeam()))
@@ -764,7 +783,8 @@ void function AddPlayerToParty( string playerName, string inviterName ){
 
 void function DisbandLeaveParty( string playerName ){
     if( playerName in parties || GetParty( playerName ).len() == 2 ){
-        foreach( name in GetParty( playerName ) ){
+        array <string> party = GetParty( playerName )
+        foreach( name in party ){
             entity p = PlayerFromName( name )
             if( p == null )
                 continue
@@ -774,9 +794,10 @@ void function DisbandLeaveParty( string playerName ){
             if( highlight )
                 Highlight_ClearFriendlyHighlight( p )
         }
-        delete parties[playerName]
 
-        print( "[BTB] " + playerName + "'s party disbanded" )
+        print( "[BTB] " + party[0] + "'s party disbanded" )
+        delete parties[party[0]]
+
         return
     }
     else{
@@ -1240,7 +1261,11 @@ void function ExecuteStatsBalance(){
     }
 }
 
-void function AddRUI( entity player ){
+void function HandleJoinedPlayer( entity player ){
+    float toneKD = BTBGetToneKD( player )
+    if( toneKD != 0.0 )
+        lastMatchStats[player.GetPlayerName()] <- toneKD * lastMatchStats["average"]
+
     if( GetGameState() == eGameState.Prematch ){
         NSCreateStatusMessageOnPlayer( player, "BTB", "Waiting for players....", "btbstatus"  )
         return
@@ -1557,8 +1582,8 @@ void function BTBFallbackModeThread(){
 int function GetAfkState( entity player ){
     float localgrace = afkTime * 1.0
     float warn = afkTime * 0.43
-    if ( player in file.lastmoved){
-        float lastmove = file.lastmoved[ player ]
+    if ( player in lastmoved){
+        float lastmove = lastmoved[ player ]
         if (Time() > lastmove + (localgrace - warn)){
 
             if (Time() > lastmove + localgrace){
@@ -1571,7 +1596,7 @@ int function GetAfkState( entity player ){
 }
 
 void function Moved( entity player ){
-    file.lastmoved[ player ] <- Time()
+    lastmoved[ player ] <- Time()
 }
 
 bool function bMoved( entity player ){
@@ -1596,7 +1621,7 @@ void function AddPlayerCallbacks( entity player ){
 }
 
 void function DeletePlayerRecords( entity player ){
-    if (player in file.lastmoved){
-        delete file.lastmoved[ player ]
+    if (player in lastmoved){
+        delete lastmoved[ player ]
     }
 }

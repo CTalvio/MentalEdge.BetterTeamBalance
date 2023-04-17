@@ -15,10 +15,11 @@ You can also run BTB without FSU, although this will disable teambalancing by vo
 
 - Allow players to form parties and choose a nemesis
 - Kick any players that are AFK for 70 seconds
-- Shuffle teams between rounds, using previous match data to keep them balanced
+- Shuffle teams between rounds, using data from the Tone API and the previous match, to keep them balanced
     - Then, teams are adjusted further if needed (someone left/joined), and locked after 60 seconds
 - Place any joining player on the team that needs more help
-- Auto-level the player count between teams, but only after waiting 40 seconds for new joins
+- Auto-level the player count between teams, but only after waiting 40 seconds for new joins (unless one team is empty)
+    - It will also only swap a player that would make teams more even, never less
 - Allow rebalance by vote (and suggest it when relevant)
 - Will not automatically rebalance teams (can be enabled)
 - Will not level team-strength by subtly swapping the teams of players (insidious mode, can be enabled)
@@ -29,38 +30,15 @@ If this sounds good to you, you can install BTB on your server with zero configu
 
 ### Changelog
 
-##### 3.0.2
+#### 3.1.0
 
-- Fix occasional server crash on player disconnect
-- Fix party/nemesis info tip displaying almost every spawn
-
-##### 3.0.1
-
-- Fix crash when running without FSU
-- AFK fallback improved (now does even less stuff that doesn't work in FFA)
-
-#### 3.0.0
-
-- New feature: Parties and Nemeses
-    - Parties
-        - Invite other players to form a party
-        - If someone is on the opposite team, teams will be minimally adjusted to bring them to the same team
-        - Parties are kept together through any re-balancing, and across multiple matches
-        - Party members can see the locations of their fellow party members
-        - Party strength check, parties that would stomp are not allowed
-    - Nemesis
-        - Mark someone as your nemesis
-        - Nemeses are kept on opposite teams
-- Improved RUI and chat messages, informing players on the server about what BTB is doing
-- Added FFA fallback mode, runs AFK detection only
-- Objectiverate calculations added for Frontier War and Hardpoint
-- Match start re-adjustmet
-    - Default grace period reduced to 60 seconds
-    - Added minimum improvement thresold, adjustments that only help a tiny bit wont be made (should reduce excessive team changes)
-
-![](https://i.imgur.com/m8ybaWt.jpg)
+- New Feature: Now able to access the Tone API to grab an initial player skill estimate based on their global stats
+    - Affects the skill value of a player, for the first five minutes they play on the server
+- Another party crash fix
 
 ## Features
+
+![](https://i.imgur.com/m8ybaWt.jpg)
 
 ### Complex Team Balancing
 
@@ -134,6 +112,36 @@ BTB will in that scenario pit the two less skilled players against the single mo
 - UIDs set as admin in FSU are immune
 
 ### Changelogs for previous versions
+
+
+#### 3.0.2
+
+- Fix occasional server crash on player disconnect
+- Fix party/nemesis info tip displaying almost every spawn
+
+#### 3.0.1
+
+- Fix crash when running without FSU
+- AFK fallback improved (now does even less stuff that doesn't work in FFA)
+
+#### 3.0.0
+
+- New feature: Parties and Nemeses
+    - Parties
+        - Invite other players to form a party
+        - If someone is on the opposite team, teams will be minimally adjusted to bring them to the same team
+        - Parties are kept together through any re-balancing, and across multiple matches
+        - Party members can see the locations of their fellow party members
+        - Party strength check, parties that would stomp are not allowed
+    - Nemesis
+        - Mark someone as your nemesis
+        - Nemeses are kept on opposite teams
+- Improved RUI and chat messages, informing players on the server about what BTB is doing
+- Added FFA fallback mode, runs AFK detection only
+- Objectiverate calculations added for Frontier War and Hardpoint
+- Match start re-adjustmet
+    - Default grace period reduced to 60 seconds
+    - Added minimum improvement thresold, adjustments that only help a tiny bit wont be made (should reduce excessive team changes)
 
 #### 2.0.1
 
