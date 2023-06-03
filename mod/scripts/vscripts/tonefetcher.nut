@@ -39,19 +39,27 @@ void function SaveToneKD(string uid){
 
     HttpRequest request = { ... }
     request.method = HttpRequestMethod.GET
-    request.url = toneurl + "/v1/client/players/" + uid
+    request.url = toneurl + "/v2/client/players?player=" + uid
 
     void functionref( HttpRequestResponse ) OnSuccess = void function ( HttpRequestResponse response )
     {
-        if(response.statusCode == 200){
-            table decoded = DecodeJSON(response.body)
-            string user = expect string(decoded["username"])
-            float kd = expect string(decoded["kills"]).tofloat() / expect string(decoded["deaths"]).tofloat()
-            print("[BTB][Tone API] Succesfully grabbed stats for " + user + ": " + kd )
-            toneKDs[user] <- kd
-        }else{
-            print("[BTB][Tone API] Tone API unavailable, or does not have stats for this player")
-            print("[BTB][Tone API] " + response.body )
+        try{
+            table decoded
+            foreach( uid, tab in DecodeJSON(response.body) )
+                decoded = expect table(tab)
+
+            if(response.statusCode == 200 && decoded.len() != 0 ){
+                string user = expect string(decoded["username"])
+                float kd = expect int(decoded["kills"]).tofloat() / expect int(decoded["deaths"]).tofloat()
+                print("[BTB][Tone API] Succesfully grabbed stats for " + user + ": " + kd )
+                toneKDs[user] <- kd
+            }else{
+                print("[BTB][Tone API] Tone API unavailable, or does not have stats for this player")
+                print("[BTB][Tone API] " + response.body )
+            }
+        }catch(exception){
+            print("[BTB][Tone API] Failed to decode Tone API response")
+            return
         }
     }
 

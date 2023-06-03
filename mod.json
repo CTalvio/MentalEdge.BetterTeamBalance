@@ -3,7 +3,7 @@
 	"Description": "Team balancing and shuffling, done smortly.",
 	"LoadPriority": 8,
 	"RequiredOnClient": false,
-	"Version": "3.0.2",
+	"Version": "3.2.1",
 	"Dependencies": {
 		"FSCC_ENABLED": "Fifty.ServerChatCommands [FSCC]",
 		"FSA_ENABLED": "Fifty.ServerAdmin [FSA]"
@@ -36,24 +36,29 @@
 			"HelpString": "Enable player selected nemeses. This feature requires FSU."
 		},
 		{
+			"Name": "btb_recent_balancing",
+			"DefaultValue": "1",
+			"HelpString": "Allow BTB to change the team of a player, until they have been on the server for a minute. This allows BTB to adjust the teams a bit, as players join. This aims to result in better teams in the first game on a server, or a game where the playercount increases a lot. To really work well, the tone API should be enabled as well."
+		},
+		{
 			"Name": "btb_difference_max",
 			"DefaultValue": "1",
 			"HelpString": "The allowed difference between teams, above which a player will be moved over. Set to zero to disable team size auto-balancing."
 		},
 		{
 			"Name": "btb_wait_time",
-			"DefaultValue": "4",
+			"DefaultValue": "2",
 			"HelpString": "Duration to wait in multiples of ten seconds for new players to join the deficient team before balancing by moving players over. Set to zero to autobalance immediately. The wait is halved by every additional player of difference between the teams."
 		},
 		{
 			"Name": "btb_shuffle",
 			"DefaultValue": "1",
-			"HelpString": "Set to one to enable the player strength based team shuffle between matches."
+			"HelpString": "Set to one to enable team shuffle between matches."
 		},
 		{
 			"Name": "btb_grace_time",
 			"DefaultValue": "6",
-			"HelpString": "Duration in multiples of 10 seconds. Length of the grace period at the start of a match where further on-the-fly team changes are still allowed, if teamcomp changes due to leaving/joining players after initial teambuild."
+			"HelpString": "Duration in multiples of 10 seconds. Length of the grace period at the start of a match where further on-the-fly team changes are still allowed, if teamcomp changes due to leaving/joining players occur after initial shuffle."
 		},
 		{
 			"Name": "btb_suggestion_limit",
@@ -82,7 +87,7 @@
 		},
 		{
 			"Name": "btb_afk_threshold",
-			"DefaultValue": "6",
+			"DefaultValue": "8",
 			"HelpString": "Number of players needed on the server for it to start kicking afk players, below this playercount, afk players will be ignored. Set to zero to disable AFK kicking."
 		},
 		{
@@ -122,10 +127,7 @@
 		},
 		{
 			"Path": "tonefetcher.nut",
-			"RunOn": "( SERVER ) && MP",
-			"ServerCallback": {
-				"After": "BTBToneInit"
-			}
+			"RunOn": "( SERVER ) && MP"
 		}
 	]
 }

@@ -1,6 +1,6 @@
 # Better Team Balance
 
-Yet another autobalance mod. Highly configurable, aims to get the teamcompositions right the first time by using stats from the previous match, so that no mid-match faffing about is needed. Or is at least kept to the smallest amount tolerable. Tons of features, all with the overarching goal of improving team balancing, while being as un-annoying as possible, so that we might enjoy challenging and even matches more often. Full featurelist below.
+Yet another autobalance mod. Highly configurable, aims to get the teamcompositions right the first time by using stats from the previous match as well as the Tone API, so that no mid-match faffing about is needed. Or is at least kept to the smallest amount tolerable. Tons of features, all with the overarching goal of improving team balancing, while being as un-annoying as possible, so that we might enjoy challenging and even matches more often. Full featurelist below.
 
 ![](https://i.imgur.com/p6iEUx6.jpg)
 
@@ -13,14 +13,15 @@ You can also run BTB without FSU, although this will disable teambalancing by vo
 ### The more powerful (and hence disruptive) team balancing features are disabled by default!
 ### By default, this is what BTB will do:
 
-- Allow players to form parties and choose a nemesis
-- Kick any players that are AFK for 70 seconds
 - Shuffle teams between rounds, using data from the Tone API and the previous match, to keep them balanced
     - Then, teams are adjusted further if needed (someone left/joined), and locked after 60 seconds
 - Place any joining player on the team that needs more help
-- Auto-level the player count between teams, but only after waiting 40 seconds for new joins (unless one team is empty)
-    - It will also only swap a player that would make teams more even, never less
+    - If needed, switch the team of another recently joined player for better teams
+- Auto-level the player count between teams, but only after waiting 20 seconds for new joins (unless one team is empty)
+    - Only swap over a player that would make teams more even, never less
 - Allow rebalance by vote (and suggest it when relevant)
+- Allow players to form parties and choose a nemesis
+- Kick any players that are AFK for 70 seconds
 - Will not automatically rebalance teams (can be enabled)
 - Will not level team-strength by subtly swapping the teams of players (insidious mode, can be enabled)
 
@@ -30,11 +31,16 @@ If this sounds good to you, you can install BTB on your server with zero configu
 
 ### Changelog
 
-#### 3.1.0
+#### 3.2.1
 
-- New Feature: Now able to access the Tone API to grab an initial player skill estimate based on their global stats
-    - Affects the skill value of a player, for the first five minutes they play on the server
-- Another party crash fix
+- Fixed FFA fallback mode
+
+#### 3.2.0
+
+- New feature: Recent join balancing
+    - Actively balance teams, only switching the teams of players who have joined in the last 60 seconds
+    - Allows adjustment of teams as players join, without annoying players that have "settled in"
+    - Better teams when a server first picks up, or when a lot of players come and go
 
 ## Features
 
@@ -113,6 +119,20 @@ BTB will in that scenario pit the two less skilled players against the single mo
 
 ### Changelogs for previous versions
 
+#### 3.1.2
+
+- Added objectiverate calculation for Bounty Hunt
+- Added score redistribution on rebalance for Bounty hunt
+
+#### 3.1.1
+
+- Update to Tone API v2
+
+#### 3.1.0
+
+- New Feature: Now able to access the Tone API to grab an initial player skill estimate based on their global stats
+    - Affects the skill value of a player, for the first five minutes they play on the server
+- Another party crash fix
 
 #### 3.0.2
 

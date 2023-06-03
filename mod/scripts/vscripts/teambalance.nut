@@ -27,8 +27,9 @@ float suggestionTimer = 10.0
 int afkThresold = 5
 int afkTime = 70
 int shuffle = 1
-int grace = 9
+int grace = 6
 bool highlight = true
+bool recentBalancing = true
 
 int rebalancedHasOccurred = 0
 int waitedTime = 0
@@ -54,8 +55,8 @@ void function BTBInit(){
     AddCallback_OnPlayerRespawned( Moved )
 
     if( IsFFAGame() ){
-        print("[BTB] RUNNING AN FFA GAMEMODE - ONLY AFK KICK ACTIVE")
-        BTBFallbackModeThread()
+        print("[BTB] BetterTeamBalance is running, but server is on an FFA gamemode - ONLY AFK KICK WILL WORK")
+        thread BTBFallbackModeThread()
         return
     }
 
@@ -76,6 +77,7 @@ void function BTBInit(){
     shuffle = GetConVarInt( "btb_shuffle" )
     grace = GetConVarInt( "btb_grace_time" )
     highlight = GetConVarBool("btb_party_highlight")
+    recentBalancing = GetConVarBool("btb_recent_balancing")
 
 #if FSCC_ENABLED
     FSCC_CommandStruct command
@@ -102,7 +104,7 @@ void function BTBInit(){
     if( GetConVarBool( "btb_nemesis" ) )
         FSCC_RegisterCommand( "nemesis", command )
 
-    print("[BTB] FSU is installed! Running BTB with chat command features enabled.")
+    print("[BTB] FSU is installed! Running BetterTeamBalance with chat command features enabled.")
 
     AddCallback_OnClientDisconnected( RemoveCouplings )
     AddCallback_OnPlayerRespawned( InformPlayer )
@@ -116,12 +118,12 @@ void function BTBInit(){
 #endif
 
     AddCallback_OnPlayerKilled( OnDeathBalance )
-    AddCallback_OnClientConnecting( HandleJoiningPlayer )
-    AddCallback_OnClientConnected( HandleJoinedPlayer )
+    AddCallback_OnClientConnected( HandleJoiningPlayer )
     AddCallback_OnClientDisconnected( DeletePlayTime )
     AddCallback_GameStateEnter( eGameState.Playing, Playing)
     AddCallback_GameStateEnter( eGameState.Prematch, Prematch)
     AddCallback_GameStateEnter( eGameState.Postmatch, Postmatch)
+    BTBToneInit()
 }
 
 
@@ -181,7 +183,7 @@ void function Postmatch(){
         else
             nemesesList += "," + key+"-"+value
 
-    SetConVarString( "party_list", partiesList )
+    SetConVarString("FSM_WELCOME_MESSAGE_TITLE","%FWelcome to MENTAL - Intense Bounty Hunt")
     SetConVarString( "nemesis_list", nemesesList )
 #endif
 
@@ -332,6 +334,10 @@ float function CalculatePlayerRank( entity player ){
         objective = player.GetPlayerGameStat(PGS_ASSAULT_SCORE).tofloat() / 10000
         kills *= 0.25
     }
+    if (GAMETYPE == "at"){
+        objective = player.GetPlayerGameStat(PGS_ASSAULT_SCORE).tofloat() / 75
+        kills *= 0.25
+    }
 
     if (kills + objective == 0)
         korate = 0.5 / time
@@ -343,10 +349,13 @@ float function CalculatePlayerRank( entity player ){
     else
         deathrate = ( deaths / time ) / 2
 
-    if( !(player.GetUID() in timePlayed) )
-        timePlayed[player.GetUID()] <- 1
     // Consider previous match or ToneAPI stats depending on how long player has been playing
-    float weight = timePlayed[player.GetUID()].tofloat() / 30
+    float weight
+    try{
+        weight = timePlayed[player.GetUID()].tofloat() / 30
+    }catch(exception){
+        weight = 1.0
+    }
     if( weight < 1.0 && player.GetUID() in lastMatchStats ){
         float rankValue = korate - deathrate
         float oldValue
@@ -440,24 +449,9 @@ void function ExecuteBestPossibleSwap( entity teamMember, bool forced = false, s
     }
 }
 
-// Place a joining player onto the team most in need of bolstering
-void function HandleJoiningPlayer( entity player ){
-    if (!IsFFAGame()){
-        float playerTeamFactor = CalculateTeamStrength(player.GetTeam())
-        float otherTeamFactor = CalculateTeamStrength(GetOtherTeam(player.GetTeam()))
-        int playerTeam = GetPlayerArrayOfTeam(player.GetTeam()).len() - 1
-        int otherTeam = GetPlayerArrayOfTeam(GetOtherTeam(player.GetTeam())).len()
-
-        if (playerTeamFactor >= otherTeamFactor && playerTeam >= otherTeam)
-            SetTeam(player, GetOtherTeam(player.GetTeam()))
-        else if(playerTeam > otherTeam)
-            SetTeam(player, GetOtherTeam(player.GetTeam()))
-    }
-}
-
 // Execute insidious mode balancing, always executes during first 80 seconds of a match
 void function OnDeathBalance( entity victim, entity attacker, var damageInfo ){
-    if (subtleRebalancePermitted == 1 || matchElapsed < grace){
+    if (subtleRebalancePermitted == 1 || matchElapsed < grace ){
         float strengthDifference = fabs(CalculateTeamStrength( TEAM_MILITIA ) - CalculateTeamStrength( TEAM_IMC ))
 
         array <entity> deadOpposingPlayers
@@ -485,7 +479,7 @@ void function OnDeathBalance( entity victim, entity attacker, var damageInfo ){
 
         float swapImprovement = strengthDifference - lastStrengthDifference
 
-        if( strengthDifference > lastStrengthDifference && activeLimit < swapImprovement || lastMatchStats["average"]/2.2 < swapImprovement && strengthDifference > lastStrengthDifference && matchElapsed < grace ){
+        if( opponentToSwap != null && strengthDifference > lastStrengthDifference && activeLimit < swapImprovement || opponentToSwap != null && lastMatchStats["average"]/2.2 < swapImprovement && strengthDifference > lastStrengthDifference && matchElapsed < grace ){
             SetTeam( victim, GetOtherTeam( victim.GetTeam() ) )
             SetTeam( opponentToSwap, GetOtherTeam( opponentToSwap.GetTeam() ) )
             subtleRebalancePermitted = 0
@@ -533,8 +527,6 @@ void function PlayerCountAutobalance( entity victim ){
     #endif
         if( potentialStrengthDifference > currentStrengthDifference && GetPlayerArrayOfTeam(TEAM_IMC).len() != 0 && GetPlayerArrayOfTeam(TEAM_MILITIA).len() != 0 )
             return
-
-
 
         // Passed checks, balance the teams
         print("[BTB] The team of " + victim.GetPlayerName() + " has been switched")
@@ -1226,7 +1218,7 @@ void function ExecuteStatsBalance(){
 
     //Redistribute scores
     if ( GetGameState() == eGameState.Playing ){
-        if (GAMETYPE == "tdm" || GAMETYPE == "ps" || GAMETYPE == "aitdm" || GAMETYPE == "ttdm"){
+        if (GAMETYPE == "tdm" || GAMETYPE == "ps" || GAMETYPE == "aitdm" || GAMETYPE == "ttdm" || GAMETYPE == "at"){
             AddTeamScore( TEAM_IMC, -GameRules_GetTeamScore(TEAM_IMC))
             AddTeamScore( TEAM_MILITIA, -GameRules_GetTeamScore(TEAM_MILITIA))
 
@@ -1235,7 +1227,7 @@ void function ExecuteStatsBalance(){
                 if (GAMETYPE == "tdm" || GAMETYPE == "ps" || GAMETYPE == "ttdm"){
                     AddTeamScore( player.GetTeam(), player.GetPlayerGameStat(PGS_KILLS))
                 }
-                else if (GAMETYPE == "aitdm"){
+                else if (GAMETYPE == "aitdm" || GAMETYPE == "at"){
                     AddTeamScore( player.GetTeam(), player.GetPlayerGameStat(PGS_ASSAULT_SCORE))
 
                     //Scale team score to account for a missing player if teams are uneven
@@ -1261,17 +1253,88 @@ void function ExecuteStatsBalance(){
     }
 }
 
-void function HandleJoinedPlayer( entity player ){
+void function HandleJoiningPlayer( entity player ){
+    timePlayed[player.GetUID()] <- 0
     float toneKD = BTBGetToneKD( player )
     if( toneKD != 0.0 )
         lastMatchStats[player.GetPlayerName()] <- toneKD * lastMatchStats["average"]
 
-    if( GetGameState() == eGameState.Prematch ){
-        NSCreateStatusMessageOnPlayer( player, "BTB", "Waiting for players....", "btbstatus"  )
-        return
+    if (!IsFFAGame()){
+        int playerTeamScore = GameRules_GetTeamScore( player.GetTeam() )
+        int otherTeamScore = GameRules_GetTeamScore( GetOtherTeam(player.GetTeam()) )
+        int playerTeam = GetPlayerArrayOfTeam(player.GetTeam()).len() - 1
+        int otherTeam = GetPlayerArrayOfTeam(GetOtherTeam(player.GetTeam())).len()
+
+        if (playerTeamScore >= otherTeamScore && playerTeam >= otherTeam)
+            SetTeam(player, GetOtherTeam(player.GetTeam()))
+        else if(playerTeam > otherTeam)
+            SetTeam(player, GetOtherTeam(player.GetTeam()))
+
+        if( GetGameState() == eGameState.Prematch ){
+            NSCreateStatusMessageOnPlayer( player, "BTB", "Waiting for players....", "btbstatus"  )
+            return
+        }
+        else if( matchElapsed < grace )
+            NSCreateStatusMessageOnPlayer( player, "BTB", "Teams have been balanced", "btbstatus"  )
+
+        if( GetGameState() == eGameState.Playing && recentBalancing ){
+            if( playerTeam+1 == otherTeam )
+                BalanceRecentlyJoined( player )
+            thread JoiningPlayerHUD( player )
+        }
     }
-    if( matchElapsed < grace )
-        NSCreateStatusMessageOnPlayer( player, "BTB", "Teams have been balanced", "btbstatus"  )
+}
+
+void function JoiningPlayerHUD( entity player ){
+    NSCreateStatusMessageOnPlayer( player, "BTB", "Welcome! Your team may change...", "btbjoining"  )
+    wait 70
+    if(IsValid(player))
+        NSEditStatusMessageOnPlayer( player, "BTB", "Your team is now locked!", "btbjoining"  )
+    else
+        return
+    wait 20
+    if(IsValid(player))
+        NSDeleteStatusMessageOnPlayer( player, "btbjoining"  )
+}
+
+void function BalanceRecentlyJoined(entity player){
+    float strengthDifference = fabs(CalculateTeamStrength( TEAM_MILITIA ) - CalculateTeamStrength( TEAM_IMC ))
+
+    array <entity> recentPlayers
+    foreach(entity p in GetPlayerArrayOfTeam(GetOtherTeam(player.GetTeam())) ){
+        if( timePlayed[p.GetUID()] < 7)
+            recentPlayers.append(p)
+    }
+
+    float lastStrengthDifference = 100
+    entity opponentToSwap
+    foreach(entity p in recentPlayers){
+        float newStrengthDifference = fabs(CalculateTeamStrengtWithout( p, player ) - CalculateTeamStrengtWithout( player, p ))
+    #if FSCC_ENABLED
+        if ( lastStrengthDifference > newStrengthDifference && IsSwapAllowed( player, p ) ){
+            opponentToSwap = p
+            lastStrengthDifference = newStrengthDifference
+        }
+    #else
+        if ( lastStrengthDifference > newStrengthDifference ){
+            opponentToSwap = p
+            lastStrengthDifference = newStrengthDifference
+        }
+    #endif
+    }
+
+    if( strengthDifference > lastStrengthDifference && opponentToSwap != null ){
+        SetTeam( player, GetOtherTeam( player.GetTeam() ) )
+        SetTeam( opponentToSwap, GetOtherTeam( opponentToSwap.GetTeam() ) )
+        print("[BTB] " + opponentToSwap.GetPlayerName() + "'s team has been switched to better place " + player.GetPlayerName() + ".")
+
+    #if FSCC_ENABLED
+        FSU_PrivateChatMessage( opponentToSwap, "%FYour team has been switched to place a joining player onto the best team for them. Your team is not yet locked.")
+    #else
+        Chat_ServerPrivateMessage( opponentToSwap, "Your team has been switched to place a joining player onto the best team for them. Your team is not yet locked.", false)
+    #endif
+        NSSendPopUpMessageToPlayer( opponentToSwap, "Your team has been switched!" )
+    }
 }
 
 // Main thread
@@ -1525,7 +1588,7 @@ void function BTBThread(){
 
                     case eAntiAfkPlayerState.AFK:
                         print("[BTB] AFK player kicked: " + player.GetPlayerName() + " - " + player.GetUID())
-                        ServerCommand("kickid "+ player.GetUID())
+                        NSDisconnectPlayer(player, "You were disconnected due to being AFK")
                         break
                 }
             }
