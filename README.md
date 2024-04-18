@@ -31,9 +31,15 @@ If this sounds good to you, you can install BTB on your server with zero configu
 
 ### Changelog
 
-#### 3.2.1
+#### 3.2.3
+
+- Fixed rare crash on player disconnect
+- Fixed parties not persisting through several matches
+
+#### 3.2.1-2
 
 - Fixed FFA fallback mode
+- Non-crash bugfix
 
 #### 3.2.0
 

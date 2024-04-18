@@ -137,6 +137,15 @@ void function DeletePlayTime( entity player ){
     }
 }
 
+string function TimerToMinutesAndSeconds(int timer){
+	int minutes = int(floor(timer / 60))
+	string seconds = string(timer - (minutes * 60))
+	if (timer - (minutes * 60) < 10){
+		seconds = "0"+seconds
+	}
+	return minutes + ":" + seconds
+}
+
 // Saves parties and ranks for use in the next match
 void function Postmatch(){
     if (rebalancedHasOccurred == 1){
@@ -183,7 +192,7 @@ void function Postmatch(){
         else
             nemesesList += "," + key+"-"+value
 
-    SetConVarString("FSM_WELCOME_MESSAGE_TITLE","%FWelcome to MENTAL - Intense Bounty Hunt")
+    SetConVarString( "party_list", partiesList )
     SetConVarString( "nemesis_list", nemesesList )
 #endif
 
@@ -505,7 +514,7 @@ void function OnDeathBalance( entity victim, entity attacker, var damageInfo ){
 // Check if playercount balancing is needed on death, always executes during first 40 seconds of a match
 void function PlayerCountAutobalance( entity victim ){
     wait 0.5
-    if( waitedTime >= waitTime && matchElapsed < grace || GetPlayerArrayOfTeam(TEAM_IMC).len() == 0 || GetPlayerArrayOfTeam(TEAM_MILITIA).len() == 0){
+    if( IsValid(victim) && waitedTime >= waitTime && matchElapsed < grace || GetPlayerArrayOfTeam(TEAM_IMC).len() == 0 || GetPlayerArrayOfTeam(TEAM_MILITIA).len() == 0){
         if ( differenceMax == 0 || IsFFAGame() || GetPlayerArray().len() == 1 || abs(GetPlayerArrayOfTeam(TEAM_IMC).len() - GetPlayerArrayOfTeam(TEAM_MILITIA).len()) <= differenceMax || GameTime_TimeLeftSeconds() < 60 ){
             return
         }
@@ -1113,7 +1122,7 @@ void function VoteHUD(){
         }
     }
     if(GetConVarBool("FSV_ENABLE_CHATUI")){
-        FSU_ChatBroadcast( "%H"+FSV_TimerToMinutesAndSeconds(timer)+"%N - " + "A vote to rebalance teams has begun! Use %H%Ptb %Nto vote. %T" + int(GetPlayerArray().len()*voteFraction) + " votes will be needed." )
+        FSU_ChatBroadcast( "%H"+TimerToMinutesAndSeconds(timer)+"%N - " + "A vote to rebalance teams has begun! Use %H%Ptb %Nto vote. %T" + int(GetPlayerArray().len()*voteFraction) + " votes will be needed." )
     }
 
     while(timer > 0 && playersWantingToBalance.len() < int(GetPlayerArray().len()*voteFraction)){
@@ -1125,11 +1134,11 @@ void function VoteHUD(){
             }
             if(GetConVarBool("FSV_ENABLE_RUI")){
                 foreach (entity player in GetPlayerArray()) {
-                    NSEditStatusMessageOnPlayer( player, FSV_TimerToMinutesAndSeconds(timer), playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + " have voted to rebalance teams", "teambalance" )
+                    NSEditStatusMessageOnPlayer( player, TimerToMinutesAndSeconds(timer), playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + " have voted to rebalance teams", "teambalance" )
                 }
             }
             if(GetConVarBool("FSV_ENABLE_CHATUI") && playersWantingToBalance.len() != lastVotes){
-                FSU_ChatBroadcast( "%H"+FSV_TimerToMinutesAndSeconds(timer)+"%H - " + playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + "%N have voted to rebalance teams and scores. %T Use %H%Ptb %Tto vote." )
+                FSU_ChatBroadcast( "%H"+TimerToMinutesAndSeconds(timer)+"%H - " + playersWantingToBalance.len() + "/" + int(GetPlayerArray().len()*voteFraction) + "%N have voted to rebalance teams and scores. %T Use %H%Ptb %Tto vote." )
                 lastVotes = playersWantingToBalance.len()
             }
             nextUpdate -= 5
