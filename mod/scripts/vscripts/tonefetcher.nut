@@ -31,7 +31,7 @@ void function CheckPlayer( entity player ){
         if( uid == player.GetUID() )
             return
 
-    print("[BTB][Tone API] Attempting to get stats for " + player.GetPlayerName() )
+    print("[BTB][NuTone API] Attempting to get stats for " + player.GetPlayerName())
     SaveToneKD( player.GetUID() )
 }
 
@@ -39,34 +39,30 @@ void function SaveToneKD(string uid){
 
     HttpRequest request = { ... }
     request.method = HttpRequestMethod.GET
-    request.url = toneurl + "/v2/client/players?player=" + uid
+    request.url = toneurl + uid
 
     void functionref( HttpRequestResponse ) OnSuccess = void function ( HttpRequestResponse response )
     {
         try{
-            table decoded
-            foreach( uid, tab in DecodeJSON(response.body) )
-                decoded = expect table(tab)
-
-            if(response.statusCode == 200 && decoded.len() != 0 ){
-                string user = expect string(decoded["username"])
+            if(response.statusCode == 200){
+                table decoded = DecodeJSON(response.body)
+                string user = expect string(decoded["name"])
                 float kd = expect int(decoded["kills"]).tofloat() / expect int(decoded["deaths"]).tofloat()
-                print("[BTB][Tone API] Succesfully grabbed stats for " + user + ": " + kd )
                 toneKDs[user] <- kd
+                print("[BTB][NuTone API] Succesfully grabbed stats for " + user + ": " + kd )
             }else{
-                print("[BTB][Tone API] Tone API unavailable, or does not have stats for this player")
-                print("[BTB][Tone API] " + response.body )
+                print("[BTB][NuTone API] NuTone does not have stats for this player")
             }
         }catch(exception){
-            print("[BTB][Tone API] Failed to decode Tone API response")
-            return
+            print("[BTB][NuTone API] There was a response, but it could not be decoded")
+            print(response.body)
         }
     }
 
     void functionref( HttpRequestFailure ) OnFailure = void function ( HttpRequestFailure failure )
     {
-        print("[BTB][Tone API] Tone API unavailable, or does not have stats for this player")
-        print("[BTB][Tone API] " + failure.errorMessage )
+        print("[BTB][NuTone API] NuTone server unavailable")
+        print("[BTB][NuTone API] " + failure.errorMessage )
     }
 
     NSHttpRequest(request, OnSuccess, OnFailure)

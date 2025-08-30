@@ -1,6 +1,6 @@
 # Better Team Balance
 
-Yet another autobalance mod. Highly configurable, aims to get the teamcompositions right the first time by using stats from the previous match as well as the Tone API, so that no mid-match faffing about is needed. Or is at least kept to the smallest amount tolerable. Tons of features, all with the overarching goal of improving team balancing, while being as un-annoying as possible, so that we might enjoy challenging and even matches more often. Full featurelist below.
+Yet another autobalance mod. Highly configurable, aims to get the teamcompositions right the first time by using stats from the previous match as well as NuTone, so that no mid-match faffing about is needed. Or is at least kept to the smallest amount tolerable. Tons of features, all with the overarching goal of improving team balancing, while being as un-annoying as possible, so that we might enjoy challenging and even matches more often. Full featurelist below.
 
 ![](https://i.imgur.com/p6iEUx6.jpg)
 
@@ -13,7 +13,7 @@ You can also run BTB without FSU, although this will disable teambalancing by vo
 ### The more powerful (and hence disruptive) team balancing features are disabled by default!
 ### By default, this is what BTB will do:
 
-- Shuffle teams between rounds, using data from the Tone API and the previous match, to keep them balanced
+- Shuffle teams between rounds, using data from NuTone and the previous match, to keep them balanced
     - Then, teams are adjusted further if needed (someone left/joined), and locked after 60 seconds
 - Place any joining player on the team that needs more help
     - If needed, switch the team of another recently joined player for better teams
@@ -31,22 +31,12 @@ If this sounds good to you, you can install BTB on your server with zero configu
 
 ### Changelog
 
-#### 3.2.3
+#### 3.3.0
 
-- Fixed rare crash on player disconnect
-- Fixed parties not persisting through several matches
-
-#### 3.2.1-2
-
-- Fixed FFA fallback mode
-- Non-crash bugfix
-
-#### 3.2.0
-
-- New feature: Recent join balancing
-    - Actively balance teams, only switching the teams of players who have joined in the last 60 seconds
-    - Allows adjustment of teams as players join, without annoying players that have "settled in"
-    - Better teams when a server first picks up, or when a lot of players come and go
+- NuTone support (Replaces Tone API functionality)
+    - Participating servers contribute player stats, BTB can use those stats for better team balancing
+    - No API key needed for read access, all servers running BTB can use the data for teambalancing
+    - Stats submission mod: https://github.com/nutone-tf/nutone-server
 
 ## Features
 
@@ -124,6 +114,23 @@ BTB will in that scenario pit the two less skilled players against the single mo
 - UIDs set as admin in FSU are immune
 
 ### Changelogs for previous versions
+
+#### 3.3.0
+
+- Fixed rare crash on player disconnect
+- Fixed parties not persisting through several matches
+
+#### 3.2.1-2
+
+- Fixed FFA fallback mode
+- Non-crash bugfix
+
+#### 3.2.0
+
+- New feature: Recent join balancing
+    - Actively balance teams, only switching the teams of players who have joined in the last 60 seconds
+    - Allows adjustment of teams as players join, without annoying players that have "settled in"
+    - Better teams when a server first picks up, or when a lot of players come and go
 
 #### 3.1.2
 
